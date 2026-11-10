@@ -2,6 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
+import { getCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import { nanoid } from "nanoid";
 import { z } from "zod";
@@ -17,6 +18,7 @@ import {
   type Workspace,
   type WorkspaceColor,
 } from "@forgeboard/shared";
+import { auth, matchesToken } from "./auth.js";
 import { bus } from "./bus.js";
 import { detectChecks } from "./checks.js";
 import { config } from "./config.js";
@@ -46,6 +48,7 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
  * - Host must be local, which blocks DNS rebinding.
  * - Changes need a JSON body, so a browser always sends a CORS preflight first (a plain
  *   cross-site form or text/plain POST is refused), and a foreign Origin is refused outright.
+ * - With an access key on (the `forgeboard` command), every call needs it, as a cookie or a Bearer header.
  */
 app.use("/api/*", async (c, next) => {
   const host = c.req.header("host") ?? "";
@@ -54,6 +57,12 @@ app.use("/api/*", async (c, next) => {
     const origin = c.req.header("origin");
     if (origin && origin !== `http://${host}` && !config.webOrigins.includes(origin)) return c.json({ error: "Forbidden origin" }, 403);
     if (!c.req.header("content-type")?.toLowerCase().startsWith("application/json")) return c.json({ error: "Expected a JSON body" }, 415);
+  }
+  if (auth.token && c.req.path !== "/api/health") {
+    const bearer = c.req.header("authorization")?.replace(/^Bearer\s+/i, "");
+    if (!matchesToken(bearer) && !matchesToken(getCookie(c, auth.cookieName))) {
+      return c.json({ error: "Open the link printed in the terminal where forgeboard is running.", code: "auth" }, 401);
+    }
   }
   await next();
 });
@@ -174,6 +183,7 @@ app.patch("/api/workspaces/:id", async (c) => {
       description: z.string().trim().max(80).optional(),
       color: colorSchema.optional(),
       crewMode: z.enum(["default", "custom"]).optional(),
+      forgeCommands: z.enum(["standard", "restricted"]).optional(),
       archived: z.boolean().optional(),
     }),
   );

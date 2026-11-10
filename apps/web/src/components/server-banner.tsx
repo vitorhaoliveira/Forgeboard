@@ -7,7 +7,7 @@ import { useAppState } from "@/lib/app-state";
 export function ServerBanner() {
   const t = useTranslations("common");
   const td = useTranslations("demo");
-  const { serverDown } = useAppState();
+  const { serverDown, locked } = useAppState();
   if (IS_DEMO) {
     return (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-accent/25 bg-accent/[0.06] px-7 py-2 text-[12.5px] text-[#fdba74]">
@@ -15,6 +15,13 @@ export function ServerBanner() {
         <a href="https://github.com/vitorhaoliveira/Forgeboard" className="font-medium text-accent underline-offset-2 hover:underline">
           {td("github")}
         </a>
+      </div>
+    );
+  }
+  if (locked) {
+    return (
+      <div role="alert" className="border-b border-accent/30 bg-accent/[0.08] px-7 py-2 text-[13px] text-[#fdba74]">
+        {t("locked")}
       </div>
     );
   }

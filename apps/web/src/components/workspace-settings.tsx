@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslations } from "next-intl";
 import { Check, Loader2, Plus, Trash2 } from "lucide-react";
-import type { CheckCommand, Repo, WorkspaceColor } from "@forgeboard/shared";
+import type { CheckCommand, ForgeCommands, Repo, WorkspaceColor } from "@forgeboard/shared";
 import { api } from "@/lib/api";
 import { useAppState, WorkspaceScope } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
@@ -164,7 +164,7 @@ export function WorkspaceSettings({ workspaceId }: { workspaceId: string }) {
   const tw = useTranslations("ws");
   const tc = useTranslations("common");
   const router = useRouter();
-  const { workspace, repos: allRepos, crews, loaded, refreshWorkspaces, refreshRepos, refreshCrews } = useAppState();
+  const { workspace, repos: allRepos, crews, loaded, agentName, refreshWorkspaces, refreshRepos, refreshCrews } = useAppState();
   const ws = workspace(workspaceId);
   const repos = allRepos.filter((r) => r.workspaceId === workspaceId);
 
@@ -214,6 +214,13 @@ export function WorkspaceSettings({ workspaceId }: { workspaceId: string }) {
     });
   }
 
+  async function setForgeCommands(value: ForgeCommands) {
+    await act(async () => {
+      await api.updateWorkspace(workspaceId, { forgeCommands: value });
+      await refreshWorkspaces();
+    });
+  }
+
   async function setCrewMode(mode: "default" | "custom") {
     await act(async () => {
       await api.updateWorkspace(workspaceId, { crewMode: mode });
@@ -234,7 +241,7 @@ export function WorkspaceSettings({ workspaceId }: { workspaceId: string }) {
           <Link href={`/w/${workspaceId}`} className="block px-2.5 pb-3.5 text-[13px] text-muted hover:text-text">
             {t("back", { name: ws.name })}
           </Link>
-          {(["general", "repos", "crew", "rules", "danger"] as const).map((key) => (
+          {(["general", "repos", "crew", "safety", "rules", "danger"] as const).map((key) => (
             <a key={key} href={`#${key}`} className="block rounded-[7px] px-2.5 py-[7px] text-[13px] text-muted hover:bg-panel-2 hover:text-text">
               {t(key)}
             </a>
@@ -333,6 +340,34 @@ export function WorkspaceSettings({ workspaceId }: { workspaceId: string }) {
                   ))}
                 </div>
               )}
+            </Section>
+
+            <Section id="safety" title={t("safety")}>
+              <div role="radiogroup" aria-label={t("forgeCommands", { name: agentName("forge", workspaceId) })} className="flex flex-col gap-2.5">
+                <span className="text-[13px] font-medium">{t("forgeCommands", { name: agentName("forge", workspaceId) })}</span>
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                  {(["standard", "restricted"] as const).map((value) => {
+                    const on = (ws.forgeCommands ?? "standard") === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        onClick={() => !on && setForgeCommands(value)}
+                        className={cn("flex flex-col gap-1 rounded-[10px] border px-3.5 py-3 text-left", on ? "border-border-strong bg-panel-2" : "border-border hover:border-border-strong")}
+                      >
+                        <span className="flex items-center gap-2 font-medium">
+                          {value === "standard" ? t("cmdStandard") : t("cmdRestricted")}
+                          {on && <Check className="ml-auto size-3.5" aria-hidden="true" />}
+                        </span>
+                        <span className="text-[12.5px] text-muted">{value === "standard" ? t("cmdStandardHint") : t("cmdRestrictedHint")}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[12.5px] text-muted">{t("safetyNote")}</p>
+              </div>
             </Section>
 
             <Section id="rules" title={t("rules")}>

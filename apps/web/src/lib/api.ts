@@ -20,6 +20,8 @@ import { demoApi } from "./demo/demo-api";
 export const API_URL = process.env.NEXT_PUBLIC_FORGEBOARD_API ?? `http://127.0.0.1:${DEFAULT_SERVER_PORT}`;
 
 export class ServerDownError extends Error {}
+/** The server wants the access key: open the link printed by `forgeboard`. */
+export class UnauthorizedError extends Error {}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
@@ -31,6 +33,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   } catch {
     throw new ServerDownError(API_URL);
   }
+  if (res.status === 401) throw new UnauthorizedError("unauthorized");
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
     throw new Error(body?.error ?? `Request failed (${res.status})`);

@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Agent, AgentId, ProviderInfo, Repo, Task, Workspace } from "@forgeboard/shared";
-import { api, ServerDownError } from "./api";
+import { api, ServerDownError, UnauthorizedError } from "./api";
 
 const LAST_REPO_KEY = "forgeboard:lastRepo";
 
@@ -29,6 +29,8 @@ interface AppState {
   setNewWorkspaceOpen: (open: boolean) => void;
   /** True when the local server can't be reached. */
   serverDown: boolean;
+  /** True when the server needs the access key this browser doesn't have. */
+  locked: boolean;
   loaded: boolean;
 }
 
@@ -59,6 +61,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [lastRepoId, setLastRepoId] = useState<string | null>(null);
   const [newWorkspaceOpen, setNewWorkspaceOpen] = useState(false);
   const [serverDown, setServerDown] = useState(false);
+  const [locked, setLocked] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => setLastRepoId(readStored(LAST_REPO_KEY)), []);
@@ -67,8 +70,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     try {
       await fn();
       setServerDown(false);
+      setLocked(false);
     } catch (err) {
       if (err instanceof ServerDownError) setServerDown(true);
+      else if (err instanceof UnauthorizedError) setLocked(true);
       else throw err;
     }
   }, []);
@@ -104,11 +109,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   // Keep statuses fresh everywhere. Polling a localhost server is cheap.
   useEffect(() => {
     const id = setInterval(() => {
-      if (serverDown) void Promise.all([refreshWorkspaces(), refreshRepos(), refreshCrews()]);
+      if (serverDown || locked) void Promise.all([refreshWorkspaces(), refreshRepos(), refreshCrews()]);
       void refreshTasks();
     }, 2500);
     return () => clearInterval(id);
-  }, [refreshTasks, refreshRepos, refreshWorkspaces, refreshCrews, serverDown]);
+  }, [refreshTasks, refreshRepos, refreshWorkspaces, refreshCrews, serverDown, locked]);
 
   const rememberRepo = useCallback((id: string) => {
     setLastRepoId(id);
@@ -143,9 +148,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       newWorkspaceOpen,
       setNewWorkspaceOpen,
       serverDown,
+      locked,
       loaded,
     }),
-    [workspaces, refreshWorkspaces, repos, refreshRepos, tasks, refreshTasks, providers, crews, agentName, refreshCrews, lastRepoId, rememberRepo, newWorkspaceOpen, serverDown, loaded],
+    [workspaces, refreshWorkspaces, repos, refreshRepos, tasks, refreshTasks, providers, crews, agentName, refreshCrews, lastRepoId, rememberRepo, newWorkspaceOpen, serverDown, locked, loaded],
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

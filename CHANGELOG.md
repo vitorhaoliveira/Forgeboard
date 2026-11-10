@@ -2,6 +2,22 @@
 
 All notable changes to Forgeboard are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.7.1] — 2026-11-10
+
+Security release.
+
+### Added
+
+- **Access key.** With `forgeboard`, every API call needs a key kept in `~/.forgeboard/access-key` (readable only by you). The terminal prints a link that signs the browser in (an HttpOnly cookie), and a browser without it sees a notice instead of your data. Scripts can send it as `Authorization: Bearer <key>`. Other people and programs on the machine can no longer use the API. `pnpm dev` runs without it.
+- **What Forge may run, per workspace** (workspace settings → Safety). **Standard** keeps today's behavior (package managers and node, to install and test). **Restricted** lets Forge only edit files; Forgeboard still runs the checks and sends back failures. Use it for repositories you don't fully trust.
+- **How to connect Claude** in Settings: install and login steps, open automatically when Claude Code isn't found.
+- `SECURITY.md`: how to report a vulnerability, and what Forgeboard does and doesn't protect.
+- Dependabot (weekly npm, monthly GitHub Actions) and CodeQL code scanning.
+
+### Changed
+
+- The "server down" notice no longer assumes `pnpm dev`.
+
 ## [1.7.0] — 2026-11-10
 
 One-command install: `npx forgeboard`.

@@ -9,6 +9,7 @@ import type {
   FormAnswer,
   Locale,
   FlowNode,
+  ForgeCommands,
   NodeState,
   RunEventPayload,
   Task,
@@ -18,7 +19,7 @@ import type {
 import { bus } from "./bus.js";
 import { runChecks } from "./checks.js";
 import { config } from "./config.js";
-import { agents, events, repos, rules, tasks, taskState } from "./db.js";
+import { agents, events, repos, rules, tasks, taskState, workspaces } from "./db.js";
 import * as git from "./git.js";
 import {
   forgeAnswerPrompt,
@@ -37,9 +38,15 @@ import { AbortedError, type AgentActivity } from "./providers/types.js";
  * Commands Forge may run without asking: package managers (to run tests and builds)
  * and read-only git/file commands. Anything else is refused in headless mode.
  */
-const FORGE_ALLOWED_TOOLS = ["npm", "pnpm", "yarn", "bun", "npx", "node", "ls", "git status", "git diff", "git log"].flatMap(
-  (cmd) => [`Bash(${cmd})`, `Bash(${cmd} *)`],
-);
+const READ_ONLY_COMMANDS = ["ls", "git status", "git diff", "git log"];
+const PACKAGE_COMMANDS = ["npm", "pnpm", "yarn", "bun", "npx", "node"];
+const asTools = (cmds: string[]) => cmds.flatMap((cmd) => [`Bash(${cmd})`, `Bash(${cmd} *)`]);
+
+/** Shell commands Forge may run, by the workspace's setting. File edits are always allowed. */
+const FORGE_ALLOWED_TOOLS: Record<ForgeCommands, string[]> = {
+  standard: asTools([...PACKAGE_COMMANDS, ...READ_ONLY_COMMANDS]),
+  restricted: asTools(READ_ONLY_COMMANDS),
+};
 
 /** Abort handles for tasks the server is working on right now. */
 const running = new Map<string, AbortController>();
@@ -124,10 +131,11 @@ async function forgeStep(taskId: string, mode: ForgeMode, signal: AbortSignal): 
   const agent = agents.get(task.workspaceId, "forge");
   const repoRules = rules.forRepo(repos.get(task.repoId)!);
   const state = taskState.get(taskId);
+  const commands: ForgeCommands = workspaces.get(task.workspaceId)?.forgeCommands ?? "standard";
 
   const prompt =
     mode.kind === "start"
-      ? forgeStartPrompt(agent, task, repoRules)
+      ? forgeStartPrompt(agent, task, repoRules, commands)
       : mode.kind === "answer"
         ? forgeAnswerPrompt(mode.answer, mode.form, mode.data, mode)
         : mode.kind === "fix"
@@ -140,7 +148,7 @@ async function forgeStep(taskId: string, mode: ForgeMode, signal: AbortSignal): 
     prompt,
     cwd: worktree,
     permissionMode: "acceptEdits",
-    allowedTools: FORGE_ALLOWED_TOOLS,
+    allowedTools: FORGE_ALLOWED_TOOLS[commands],
     // Keep the same conversation across rounds so Forge remembers its work.
     resumeSession: mode.kind === "start" ? undefined : state.forgeSession,
     locale: task.locale,
