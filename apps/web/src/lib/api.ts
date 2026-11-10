@@ -14,6 +14,7 @@ import {
   type Task,
   type Workspace,
 } from "@forgeboard/shared";
+import { demoApi } from "./demo/demo-api";
 
 export const API_URL = process.env.NEXT_PUBLIC_FORGEBOARD_API ?? `http://127.0.0.1:${DEFAULT_SERVER_PORT}`;
 
@@ -41,7 +42,13 @@ const patch = (body: unknown): RequestInit => ({ method: "PATCH", body: JSON.str
 const del: RequestInit = { method: "DELETE" };
 const wsQuery = (workspaceId?: string) => (workspaceId ? `?workspaceId=${workspaceId}` : "");
 
-export const api = {
+export interface StreamHandlers {
+  onEvent: (event: RunEvent) => void;
+  /** The task finished; no more events will come. */
+  onEnd: () => void;
+}
+
+const realApi = {
   providers: () => request<ProviderInfo[]>("/api/providers"),
 
   workspaces: () => request<Workspace[]>("/api/workspaces"),
@@ -77,5 +84,21 @@ export const api = {
   merge: (id: string, exclude: string[] = []) => request<Task>(`/api/tasks/${id}/merge`, post({ exclude })),
   discard: (id: string) => request<Task>(`/api/tasks/${id}/discard`, post()),
   stop: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/stop`, post()),
-  streamUrl: (id: string, after: number) => `${API_URL}/api/tasks/${id}/stream?after=${after}`,
+  /** Follows a task's events after `after`. Returns a function that stops listening. */
+  subscribe(id: string, after: number, handlers: StreamHandlers): () => void {
+    const source = new EventSource(`${API_URL}/api/tasks/${id}/stream?after=${after}`);
+    source.addEventListener("run", (msg) => handlers.onEvent(JSON.parse((msg as MessageEvent<string>).data) as RunEvent));
+    source.addEventListener("end", () => {
+      source.close();
+      handlers.onEnd();
+    });
+    return () => source.close();
+  },
 };
+
+export type Api = typeof realApi;
+
+/** The hosted demo runs a simulated crew in the browser instead of talking to a local server. */
+export const IS_DEMO = process.env.NEXT_PUBLIC_FORGEBOARD_DEMO === "1";
+
+export const api: Api = IS_DEMO ? demoApi : realApi;

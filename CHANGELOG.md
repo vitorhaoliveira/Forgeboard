@@ -2,6 +2,21 @@
 
 All notable changes to Forgeboard are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.0] — 2026-11-10
+
+Public demo: try Forgeboard in the browser without installing anything.
+
+### Added
+
+- **Demo mode** (`NEXT_PUBLIC_FORGEBOARD_DEMO=1`, or `pnpm demo`). A simulated crew runs in the browser with three seeded workspaces and tasks in every state: a question waiting for an answer, work ready to merge, work with open concerns and merged runs. Answering, merging, sending back, discarding and starting new tasks all work, with realistic timing, in English and Brazilian Portuguese.
+- **Replay** button on finished runs: plays the run again on the graph, timeline and activity feed (also in the regular app).
+- Demo banner with a link to run Forgeboard locally.
+- Instructions to publish the demo on Vercel.
+
+### Changed
+
+- The web client talks to the backend through a small transport interface (`subscribe` instead of a raw EventSource), so the demo and the local server share the same UI code.
+
 ## [1.1.0] — 2026-11-10
 
 Workspaces: group the repositories of each project, with its own crew and house rules, and see everything that needs you in one place.

@@ -121,7 +121,9 @@
     "messageSoon": "Talking to agents mid-run is coming soon. Use “Send back with notes” after the review.",
     "branch": "branch",
     "started": "started {time}",
-    "notFound": "Task not found."
+    "notFound": "Task not found.",
+    "replay": "Replay",
+    "replaying": "Replaying…"
   },
   "decide": {
     "back": "← Desk",
@@ -289,5 +291,9 @@
     "delete": "Delete workspace",
     "deleteConfirm": "Delete \"{name}\"? Its tasks and rules are removed; your repositories on disk aren't touched.",
     "dangerHint": "Archiving hides the workspace and keeps its history. Deleting removes its tasks and rules; your repositories aren't touched."
+  },
+  "demo": {
+    "banner": "Live demo: a simulated crew runs in your browser. No AI is called and nothing touches a real repository.",
+    "github": "Run it on your machine →"
   }
 }
