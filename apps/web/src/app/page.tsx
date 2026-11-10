@@ -1,5 +1,5 @@
-import { NewTaskForm } from "@/components/new-task-form";
+import { Desk } from "@/components/desk";
 
-export default function HomePage() {
-  return <NewTaskForm />;
+export default function DeskPage() {
+  return <Desk />;
 }

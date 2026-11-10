@@ -1,21 +1,46 @@
-import type { PermissionMode, ProviderId, RunEventPayload } from "@forgeboard/shared";
+import type { AgentId, Locale, ProviderId } from "@forgeboard/shared";
 
-export interface RunContext {
+/** What a provider reports while an agent works. The orchestrator adds who said it. */
+export type AgentActivity =
+  | { type: "text"; text: string }
+  | { type: "tool_use"; toolUseId: string; name: string; input: Record<string, unknown> }
+  | { type: "tool_result"; toolUseId: string; output: string; isError: boolean };
+
+export interface StepInput {
+  role: AgentId;
   prompt: string;
-  /** Directory the agent works in. */
+  /** Directory the agent works in (the task's worktree). */
   cwd: string;
-  permissionMode: PermissionMode;
+  permissionMode: "plan" | "acceptEdits";
+  /** Tools the agent may use without asking, e.g. "Bash(npm:*)". */
+  allowedTools?: string[];
+  /** Continue a previous session instead of starting fresh (after a question). */
+  resumeSession?: string;
+  locale: Locale;
+  /** Only used by the mock provider to script a believable run. */
+  round: number;
   signal: AbortSignal;
-  emit: (payload: RunEventPayload) => void;
+  emit: (activity: AgentActivity) => void;
+}
+
+export interface StepOutput {
+  sessionId: string | null;
+  /** The agent's final message. */
+  text: string;
+  costUsd: number | null;
+  durationMs: number | null;
+}
+
+export class AbortedError extends Error {
+  constructor() {
+    super("Stopped");
+  }
 }
 
 export interface Provider {
   id: ProviderId;
   label: string;
   check(): Promise<{ available: boolean; detail?: string }>;
-  /**
-   * Runs the agent until it finishes. Must emit exactly one "result" or "error"
-   * event before resolving, unless the run was aborted.
-   */
-  run(ctx: RunContext): Promise<void>;
+  /** Runs one agent step to completion. Throws on failure or AbortedError when stopped. */
+  run(input: StepInput): Promise<StepOutput>;
 }

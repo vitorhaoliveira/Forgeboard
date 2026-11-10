@@ -1,25 +1,36 @@
 import type { Metadata } from "next";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
-import { Sidebar } from "@/components/sidebar";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale, getMessages } from "next-intl/server";
+import { Rail } from "@/components/rail";
+import { ServerBanner } from "@/components/server-banner";
 import { AppStateProvider } from "@/lib/app-state";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Forgeboard",
-  description: "Local cockpit for AI coding agents.",
+  description: "Your crew of AI coding agents, on your machine.",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const locale = await getLocale();
+  const messages = await getMessages();
+
   return (
-    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+    <html lang={locale} className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <body>
-        <AppStateProvider>
-          <div className="flex h-screen overflow-hidden">
-            <Sidebar />
-            <main className="min-w-0 flex-1">{children}</main>
-          </div>
-        </AppStateProvider>
+        <NextIntlClientProvider locale={locale} messages={messages}>
+          <AppStateProvider>
+            <div className="flex min-h-screen">
+              <Rail />
+              <div className="flex min-w-0 grow flex-col">
+                <ServerBanner />
+                {children}
+              </div>
+            </div>
+          </AppStateProvider>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

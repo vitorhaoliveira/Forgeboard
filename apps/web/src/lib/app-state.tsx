@@ -1,8 +1,8 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { ProviderInfo, Repo, Task } from "@forgeboard/shared";
-import { api } from "./api";
+import type { Agent, AgentId, ProviderInfo, Repo, Task } from "@forgeboard/shared";
+import { api, ServerDownError } from "./api";
 
 const REPO_KEY = "forgeboard:selectedRepo";
 
@@ -11,11 +11,17 @@ interface AppState {
   selectedRepo: Repo | null;
   selectRepo: (id: string) => void;
   addRepo: (path: string) => Promise<Repo>;
+  refreshRepos: () => Promise<void>;
+  /** Tasks of the selected repository, newest first. */
   tasks: Task[];
   refreshTasks: () => Promise<void>;
   providers: ProviderInfo[];
-  /** Set when the local server can't be reached. */
-  serverError: string | null;
+  agents: Agent[];
+  agentName: (id: AgentId) => string;
+  refreshAgents: () => Promise<void>;
+  /** True when the local server can't be reached. */
+  serverDown: boolean;
+  loaded: boolean;
 }
 
 const AppStateContext = createContext<AppState | null>(null);
@@ -32,7 +38,7 @@ function storeRepo(id: string) {
   try {
     localStorage.setItem(REPO_KEY, id);
   } catch {
-    // Storage blocked (private mode): selection just won't persist.
+    // Storage blocked: the selection just won't persist.
   }
 }
 
@@ -41,46 +47,64 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
-  const [serverError, setServerError] = useState<string | null>(null);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [serverDown, setServerDown] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
-  const load = useCallback(async () => {
+  const guard = useCallback(async (fn: () => Promise<void>) => {
     try {
-      const [repoList, providerList] = await Promise.all([api.repos(), api.providers()]);
-      setRepos(repoList);
-      setProviders(providerList);
-      setServerError(null);
-      const stored = readStoredRepo();
-      setSelectedRepoId((current) => {
-        const wanted = current ?? stored;
-        return repoList.some((r) => r.id === wanted) ? wanted : (repoList[0]?.id ?? null);
-      });
+      await fn();
+      setServerDown(false);
     } catch (err) {
-      setServerError(err instanceof Error ? err.message : String(err));
+      if (err instanceof ServerDownError) setServerDown(true);
+      else throw err;
     }
   }, []);
 
-  const refreshTasks = useCallback(async () => {
-    try {
-      setTasks(await api.tasks());
-      setServerError(null);
-    } catch (err) {
-      setServerError(err instanceof Error ? err.message : String(err));
-    }
-  }, []);
+  const refreshRepos = useCallback(
+    () =>
+      guard(async () => {
+        const list = await api.repos();
+        setRepos(list);
+        setSelectedRepoId((current) => {
+          const wanted = current ?? readStoredRepo();
+          return list.some((r) => r.id === wanted) ? wanted : (list[0]?.id ?? null);
+        });
+      }),
+    [guard],
+  );
+
+  const refreshAgents = useCallback(
+    () =>
+      guard(async () => {
+        const [a, p] = await Promise.all([api.agents(), api.providers()]);
+        setAgents(a);
+        setProviders(p);
+      }),
+    [guard],
+  );
+
+  const refreshTasks = useCallback(
+    () =>
+      guard(async () => {
+        setTasks(selectedRepoId ? await api.tasks(selectedRepoId) : []);
+      }),
+    [guard, selectedRepoId],
+  );
 
   useEffect(() => {
-    void load();
+    void Promise.all([refreshRepos(), refreshAgents()]).finally(() => setLoaded(true));
+  }, [refreshRepos, refreshAgents]);
+
+  // Keep statuses fresh everywhere. Polling a localhost server is cheap.
+  useEffect(() => {
     void refreshTasks();
-  }, [load, refreshTasks]);
-
-  // Keep the sidebar statuses fresh. Polling a localhost server is cheap.
-  useEffect(() => {
     const id = setInterval(() => {
-      if (serverError) void load();
+      if (serverDown) void refreshRepos();
       void refreshTasks();
-    }, 3000);
+    }, 2500);
     return () => clearInterval(id);
-  }, [load, refreshTasks, serverError]);
+  }, [refreshTasks, refreshRepos, serverDown]);
 
   const selectRepo = useCallback((id: string) => {
     setSelectedRepoId(id);
@@ -97,18 +121,28 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [selectRepo],
   );
 
+  const agentName = useCallback(
+    (id: AgentId) => agents.find((a) => a.id === id)?.name ?? (id === "forge" ? "Forge" : "Hawk"),
+    [agents],
+  );
+
   const value = useMemo<AppState>(
     () => ({
       repos,
       selectedRepo: repos.find((r) => r.id === selectedRepoId) ?? null,
       selectRepo,
       addRepo,
+      refreshRepos,
       tasks,
       refreshTasks,
       providers,
-      serverError,
+      agents,
+      agentName,
+      refreshAgents,
+      serverDown,
+      loaded,
     }),
-    [repos, selectedRepoId, selectRepo, addRepo, tasks, refreshTasks, providers, serverError],
+    [repos, selectedRepoId, selectRepo, addRepo, refreshRepos, tasks, refreshTasks, providers, agents, agentName, refreshAgents, serverDown, loaded],
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

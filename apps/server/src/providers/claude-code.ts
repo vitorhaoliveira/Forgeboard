@@ -2,7 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { promisify } from "node:util";
 import { config } from "../config.js";
-import type { Provider, RunContext } from "./types.js";
+import { AbortedError, type Provider, type StepInput, type StepOutput } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -12,17 +12,12 @@ const MAX_TOOL_OUTPUT = 20_000;
 type ContentBlock =
   | { type: "text"; text: string }
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
-  | {
-      type: "tool_result";
-      tool_use_id: string;
-      content?: string | { type: string; text?: string }[];
-      is_error?: boolean;
-    }
+  | { type: "tool_result"; tool_use_id: string; content?: unknown; is_error?: boolean }
   | { type: string };
 
 /** One line of `claude -p --output-format stream-json`. */
 type StreamLine =
-  | { type: "system"; subtype?: string }
+  | { type: "system"; subtype?: string; session_id?: string }
   | { type: "assistant"; message: { content: ContentBlock[] } }
   | { type: "user"; message: { content: ContentBlock[] | string } }
   | {
@@ -30,6 +25,7 @@ type StreamLine =
       subtype?: string;
       is_error?: boolean;
       result?: string;
+      session_id?: string;
       total_cost_usd?: number;
       duration_ms?: number;
     };
@@ -38,7 +34,7 @@ function toolResultText(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content
-      .map((c) => (typeof c?.text === "string" ? c.text : ""))
+      .map((c: { text?: unknown }) => (typeof c?.text === "string" ? c.text : ""))
       .filter(Boolean)
       .join("\n");
   }
@@ -63,61 +59,59 @@ export const claudeCodeProvider: Provider = {
       const { stdout } = await execFileAsync(config.claudeBin, ["--version"], { timeout: 10_000 });
       return { available: true, detail: stdout.trim() };
     } catch {
-      return {
-        available: false,
-        detail: `"${config.claudeBin}" not found. Install Claude Code and log in.`,
-      };
+      return { available: false, detail: `"${config.claudeBin}" not found. Install Claude Code and log in.` };
     }
   },
 
-  run(ctx: RunContext) {
-    return new Promise<void>((resolve) => {
-      const child = spawn(
-        config.claudeBin,
-        [
-          "-p",
-          ctx.prompt,
-          "--output-format",
-          "stream-json",
-          "--verbose",
-          "--permission-mode",
-          ctx.permissionMode,
-        ],
-        { cwd: ctx.cwd, stdio: ["ignore", "pipe", "pipe"] },
-      );
+  run(input: StepInput) {
+    return new Promise<StepOutput>((resolve, reject) => {
+      const args = [
+        "-p",
+        input.prompt,
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--permission-mode",
+        input.permissionMode,
+      ];
+      if (input.resumeSession) args.push("--resume", input.resumeSession);
+      if (input.allowedTools?.length) args.push("--allowedTools", ...input.allowedTools);
 
-      let gotResult = false;
+      const child = spawn(config.claudeBin, args, { cwd: input.cwd, stdio: ["ignore", "pipe", "pipe"] });
+
+      let sessionId: string | null = input.resumeSession ?? null;
+      let result: StepOutput | null = null;
+      let failure: string | null = null;
       let stderr = "";
 
       const onAbort = () => child.kill("SIGTERM");
-      ctx.signal.addEventListener("abort", onAbort, { once: true });
-
+      input.signal.addEventListener("abort", onAbort, { once: true });
       child.stderr.on("data", (chunk: Buffer) => {
         stderr = (stderr + chunk.toString()).slice(-4_000);
       });
 
-      const lines = createInterface({ input: child.stdout });
-      lines.on("line", (raw) => {
+      createInterface({ input: child.stdout }).on("line", (raw) => {
         if (!raw.trim()) return;
         let line: StreamLine;
         try {
           line = JSON.parse(raw) as StreamLine;
         } catch {
-          return; // Not JSON: ignore stray output.
+          return;
         }
-
-        if (line.type === "assistant") {
+        if (line.type === "system" && line.session_id) {
+          sessionId = line.session_id;
+        } else if (line.type === "assistant") {
           for (const block of line.message.content) {
             if (block.type === "text" && "text" in block && block.text.trim()) {
-              ctx.emit({ type: "text", text: block.text });
+              input.emit({ type: "text", text: block.text });
             } else if (block.type === "tool_use" && "id" in block) {
-              ctx.emit({ type: "tool_use", toolUseId: block.id, name: block.name, input: block.input });
+              input.emit({ type: "tool_use", toolUseId: block.id, name: block.name, input: block.input });
             }
           }
         } else if (line.type === "user" && Array.isArray(line.message.content)) {
           for (const block of line.message.content) {
             if (block.type === "tool_result" && "tool_use_id" in block) {
-              ctx.emit({
+              input.emit({
                 type: "tool_result",
                 toolUseId: block.tool_use_id,
                 output: truncate(toolResultText(block.content)),
@@ -126,33 +120,28 @@ export const claudeCodeProvider: Provider = {
             }
           }
         } else if (line.type === "result") {
-          gotResult = true;
-          const costUsd = line.total_cost_usd ?? null;
-          const durationMs = line.duration_ms ?? null;
           if (line.is_error) {
-            ctx.emit({ type: "error", message: line.result || `Claude Code failed (${line.subtype})` });
+            failure = line.result || `Claude Code failed (${line.subtype})`;
           } else {
-            ctx.emit({ type: "result", summary: line.result ?? "", costUsd, durationMs });
+            result = {
+              sessionId: line.session_id ?? sessionId,
+              text: line.result ?? "",
+              costUsd: line.total_cost_usd ?? null,
+              durationMs: line.duration_ms ?? null,
+            };
           }
         }
       });
 
       child.on("error", (err) => {
-        if (!gotResult && !ctx.signal.aborted) {
-          gotResult = true;
-          ctx.emit({ type: "error", message: `Could not start Claude Code: ${err.message}` });
-        }
+        failure = `Could not start Claude Code: ${err.message}`;
       });
 
       child.on("close", (code) => {
-        ctx.signal.removeEventListener("abort", onAbort);
-        if (!gotResult && !ctx.signal.aborted) {
-          ctx.emit({
-            type: "error",
-            message: `Claude Code exited with code ${code}${stderr ? `:\n${stderr.trim()}` : ""}`,
-          });
-        }
-        resolve();
+        input.signal.removeEventListener("abort", onAbort);
+        if (input.signal.aborted) return reject(new AbortedError());
+        if (result) return resolve(result);
+        reject(new Error(failure ?? `Claude Code exited with code ${code}${stderr ? `:\n${stderr.trim()}` : ""}`));
       });
     });
   },
