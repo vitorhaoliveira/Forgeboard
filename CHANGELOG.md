@@ -2,6 +2,31 @@
 
 All notable changes to Forgeboard are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0] — 2026-11-10
+
+Workspaces: group the repositories of each project, with its own crew and house rules, and see everything that needs you in one place.
+
+### Added
+
+- **Workspaces.** A workspace holds one or more repositories, a name, a short description and a color. Create one from the sidebar's "+" with its repositories and crew in one step.
+- **Sidebar with workspaces.** Each workspace is a tile with a counter of what's waiting for you; "All" sits on top.
+- **"All" desk.** Every workspace at a glance (waiting, running, today's cost) and all questions and reviews grouped by workspace.
+- **Workspace desk.** Filter by repository, see each repo's checks and status, the workspace's crew and its rules.
+- **Own crew per workspace.** Use the default crew or tune agents just for one workspace; copy a crew from another workspace when creating one; reset an agent back to the default.
+- **House rules at three levels.** General (every workspace), workspace (all its repos) and repository. Rules can be moved between levels.
+- **Workspace settings.** Rename, recolor, add, move or remove repositories, edit checks per repo, archive or delete the workspace.
+- **Destination picker.** The task bar chooses the repository the task runs in; it remembers the last one.
+- **Runs** show the workspace and repository of each task and can be filtered by workspace.
+
+### Changed
+
+- **Crew** in the sidebar is now the default crew plus the general house rules.
+- **Settings** lists workspaces (including archived ones) and the agents available on this machine; repository settings moved into each workspace.
+
+### Migration
+
+- Existing repositories move into a workspace named "Personal". Existing house rules become rules of their repository. Nothing is lost.
+
 ## [1.0.0] — 2026-11-10
 
 Crew & review: Forgeboard goes from "one agent with a live log" to a small crew that builds, checks and reviews work before you merge it.

@@ -94,8 +94,8 @@ type ForgeMode = { kind: "start" } | { kind: "answer"; answer: string } | { kind
 async function forgeStep(taskId: string, mode: ForgeMode, signal: AbortSignal): Promise<"question" | "done"> {
   const task = tasks.get(taskId)!;
   const { worktree } = requireWorktree(taskId);
-  const agent = agents.get("forge");
-  const repoRules = rules.list(task.repoId);
+  const agent = agents.get(task.workspaceId, "forge");
+  const repoRules = rules.forRepo(repos.get(task.repoId)!);
   const state = taskState.get(taskId);
 
   const prompt =
@@ -158,7 +158,7 @@ async function checksStep(taskId: string, signal: AbortSignal): Promise<CheckRes
 async function hawkStep(taskId: string, checks: CheckResult[], signal: AbortSignal): Promise<Verdict> {
   const task = tasks.get(taskId)!;
   const { worktree, baseSha } = requireWorktree(taskId);
-  const agent = agents.get("hawk");
+  const agent = agents.get(task.workspaceId, "hawk");
   const files = await git.diff(worktree, baseSha);
 
   node(taskId, "hawk", "active");
@@ -174,7 +174,7 @@ async function hawkStep(taskId: string, checks: CheckResult[], signal: AbortSign
     const diffText = files.map((f) => f.patch).join("");
     const output = await getProvider(agent.provider).run({
       role: "hawk",
-      prompt: hawkPrompt(agent, task, rules.list(task.repoId), diffText, checks),
+      prompt: hawkPrompt(agent, task, rules.forRepo(repos.get(task.repoId)!), diffText, checks),
       cwd: worktree,
       permissionMode: "plan",
       locale: task.locale,
@@ -284,6 +284,8 @@ export function answerQuestion(taskId: string, answer: string, remember: boolean
   if (remember) {
     rules.save({
       id: nanoid(10),
+      scope: "repo",
+      workspaceId: null,
       repoId: task.repoId,
       text: `${task.question.question} → ${answer}`,
       enabled: true,

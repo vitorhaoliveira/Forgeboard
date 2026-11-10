@@ -4,7 +4,7 @@
 
 ![Desk](docs/screenshots/desk.png)
 
-> Status: **v1**. Built-in "Build & Review" flow, live run view, merge decision, editable crew and house rules, English (US) and Brazilian Portuguese. Next up (v2): design your own flows with drag-and-drop blocks.
+> Status: **v1.1**. Workspaces per project, built-in "Build & Review" flow, live run view, merge decision, editable crew and house rules, English (US) and Brazilian Portuguese. Next up (v2): design your own flows with drag-and-drop blocks.
 
 ## How it works
 
@@ -20,7 +20,10 @@ your task → Forge (builds) → Checks (tests · lint · types) → Hawk (revie
 - **Checks are objective.** Forgeboard runs your repo's own commands (detected from `package.json`, editable in Settings) after every build. Hawk can't approve while a check fails.
 - **Agents ask instead of guessing.** When Forge needs a product decision it pauses the run; the question shows up on your Desk with one-click answers. Its session is resumed with your answer.
 - **The crew learns.** Answers can be saved as **house rules**, and Hawk suggests rules from what it sees in reviews. Every agent follows them on every task.
+- **One workspace per project.** Group a project's repositories in a workspace with its own crew and house rules (general → workspace → repository). The "All" desk shows what needs you across every workspace.
 - **You stay in charge.** The merge screen leads with what changed, how we know it works and the risk; then the diff, where you can leave files out.
+
+![All workspaces](docs/screenshots/workspaces.png)
 
 ![Run](docs/screenshots/run.png)
 
@@ -35,9 +38,9 @@ pnpm install
 pnpm dev
 ```
 
-Open http://localhost:3000, add a repository (any git repo with at least one commit), and type a task in the top bar.
+Open http://localhost:3000, create a workspace with one or more repositories (any git repo with at least one commit), and type a task in the top bar.
 
-**Try it without spending tokens:** in **Crew**, set both agents to **Mock (no AI)**. The scripted crew asks a question, gets a review rejected, fixes it and gets approved — with real file changes, so merging works too.
+**Try it without spending tokens:** in **Crew** (the default crew), set both agents to **Mock (no AI)**. The scripted crew asks a question, gets a review rejected, fixes it and gets approved — with real file changes, so merging works too.
 
 ### What agents may do
 
@@ -68,7 +71,7 @@ The UI follows your browser language on first visit (English or Português) and 
 ```
 apps/
   server/   Local API (Hono + SQLite): orchestrator, git worktrees, checks, providers, SSE
-  web/      Next.js UI (next-intl, Tailwind): Desk, Run, Decide, Crew, Settings
+  web/      Next.js UI (next-intl, Tailwind): All desk, workspace desk and settings, Run, Decide, Crew, Settings
 packages/
   shared/   Types shared by server and web (Task, RunEvent, Verdict…)
 ```
@@ -79,6 +82,7 @@ Key server files: `orchestrator.ts` (the Build & Review loop), `prompts.ts` (wha
 
 - [x] **v0 — Foundation**: run a task, live stream, cancel, history
 - [x] **v1 — Crew & review**: Build & Review loop, worktrees, checks, agent questions, merge decision, house rules, EN/PT
+- [x] **v1.1 — Workspaces**: projects with their own repos, crew and rules; "All" desk
 - [ ] **v1.5 — Public demo**: replay recorded runs in a hosted demo
 - [ ] **v2 — Flow studio**: build your own flows (agents, checks, "ask me" gates, loops, parallel steps), custom agents
 - [ ] **v3 — More agents**: Codex CLI and API-key providers, parallel runs, cost dashboard

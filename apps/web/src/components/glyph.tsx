@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import type { Actor } from "@forgeboard/shared";
-import { useAppState } from "@/lib/app-state";
+import { useAppState, useWorkspaceScope } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
 
 /** Agent identity lives in the letter color only; the block stays neutral. */
@@ -14,10 +14,12 @@ export const ACTOR_COLOR: Record<Actor, string> = {
   system: "text-muted",
 };
 
-export function useActorName() {
+/** Agent names follow the crew of the surrounding workspace (see WorkspaceScope). */
+export function useActorName(workspaceId?: string) {
   const { agentName } = useAppState();
+  const scope = useWorkspaceScope();
   const t = useTranslations("actors");
-  return (actor: Actor) => (actor === "forge" || actor === "hawk" ? agentName(actor) : t(actor));
+  return (actor: Actor) => (actor === "forge" || actor === "hawk" ? agentName(actor, workspaceId ?? scope) : t(actor));
 }
 
 export function Glyph({ actor, size = 26, className, ring }: { actor: Actor; size?: number; className?: string; ring?: boolean }) {

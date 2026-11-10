@@ -8,7 +8,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { CheckCircle2, ChevronRight, GitMerge, Loader2, XCircle } from "lucide-react";
 import type { DiffFile } from "@forgeboard/shared";
 import { api } from "@/lib/api";
-import { useAppState } from "@/lib/app-state";
+import { useAppState, WorkspaceScope } from "@/lib/app-state";
 import { cleanAgentText } from "@/lib/run-model";
 import { useTaskStream } from "@/lib/use-task-stream";
 import { cn, formatCost } from "@/lib/utils";
@@ -124,7 +124,7 @@ export function DecideView({ taskId }: { taskId: string }) {
       if (kind === "discard") await api.discard(task!.id);
       if (kind === "send") await api.sendBack(task!.id, notes.trim());
       await refreshTasks();
-      router.push(kind === "send" ? `/runs/${task!.id}` : "/");
+      router.push(kind === "send" ? `/runs/${task!.id}` : `/w/${task!.workspaceId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setBusy(null);
@@ -133,7 +133,7 @@ export function DecideView({ taskId }: { taskId: string }) {
 
   async function addRule() {
     if (!v?.suggestedRule) return;
-    await api.addRule(task!.repoId, v.suggestedRule, "hawk");
+    await api.addRule("repo", task!.repoId, v.suggestedRule, "hawk");
     setRuleState("added");
   }
 
@@ -147,11 +147,12 @@ export function DecideView({ taskId }: { taskId: string }) {
   }
 
   return (
+    <WorkspaceScope workspaceId={task.workspaceId}>
     <div className="flex min-h-screen grow flex-col">
       <main className="flex grow justify-center px-8 pt-[26px] pb-6">
         <div className="flex w-full max-w-[1080px] flex-col gap-5">
           <div className="flex flex-col gap-2">
-            <Link href="/" className="text-[13px] text-muted hover:text-text">
+            <Link href={`/w/${task.workspaceId}`} className="text-[13px] text-muted hover:text-text">
               {t("back")}
             </Link>
             <div className="flex flex-wrap items-center gap-2.5">
@@ -302,5 +303,6 @@ export function DecideView({ taskId }: { taskId: string }) {
         </div>
       </footer>
     </div>
+    </WorkspaceScope>
   );
 }

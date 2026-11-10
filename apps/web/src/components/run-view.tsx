@@ -7,7 +7,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { GitBranch, Loader2, Square, Trash2 } from "lucide-react";
 import { isActive, isFinished, type Actor, type FlowNode, type RunEvent } from "@forgeboard/shared";
 import { api } from "@/lib/api";
-import { useAppState } from "@/lib/app-state";
+import { useAppState, WorkspaceScope } from "@/lib/app-state";
 import { lastHandBack, nodeStates, runBounds, segments } from "@/lib/run-model";
 import { useTaskStream } from "@/lib/use-task-stream";
 import { cn, formatCost, timeAgo } from "@/lib/utils";
@@ -18,6 +18,7 @@ import { Glyph, useActorName } from "./glyph";
 import { RunTimeline } from "./run-timeline";
 import { StatusChip } from "./status-chip";
 import { Button, buttonClass } from "./ui";
+import { WorkspaceDot } from "./workspace-ui";
 
 const FILTERS: (Actor | null)[] = [null, "forge", "checks", "hawk", "you"];
 
@@ -42,7 +43,7 @@ export function RunView({ taskId }: { taskId: string }) {
   const locale = useLocale();
   const router = useRouter();
   const name = useActorName();
-  const { refreshTasks } = useAppState();
+  const { refreshTasks, workspace, repo } = useAppState();
   const { task, events, error } = useTaskStream(taskId);
   const [filter, setFilter] = useState<Actor | null>(null);
   const [busy, setBusy] = useState<"stop" | "discard" | null>(null);
@@ -96,10 +97,13 @@ export function RunView({ taskId }: { taskId: string }) {
     setBusy("discard");
     await api.discard(taskId).catch(() => undefined);
     await refreshTasks();
-    router.push("/");
+    router.push(task ? `/w/${task.workspaceId}` : "/");
   }
 
+  const ws = workspace(task.workspaceId);
+
   return (
+    <WorkspaceScope workspaceId={task.workspaceId}>
     <div className="flex min-h-0 grow flex-col">
       <header className="flex flex-wrap items-center gap-3 border-b border-border px-[22px] py-3">
         <div className="min-w-0">
@@ -110,6 +114,16 @@ export function RunView({ taskId }: { taskId: string }) {
             </StatusChip>
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12.5px] text-muted">
+            {ws && (
+              <>
+                <Link href={`/w/${ws.id}`} className="inline-flex items-center gap-1.5 hover:text-text">
+                  <WorkspaceDot color={ws.color} />
+                  {ws.name}
+                  <span className="font-mono">/ {repo(task.repoId)?.name}</span>
+                </Link>
+                ·
+              </>
+            )}
             <Link href="/flows" className="hover:text-text">
               {tf("name")}
             </Link>
@@ -202,5 +216,6 @@ export function RunView({ taskId }: { taskId: string }) {
         </aside>
       </div>
     </div>
+    </WorkspaceScope>
   );
 }
