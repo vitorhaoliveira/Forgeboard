@@ -7,10 +7,11 @@
     "delete": "Excluir",
     "add": "Adicionar",
     "send": "Enviar",
-    "serverDown": "Não foi possível falar com o servidor do Forgeboard em {url}. Inicie com pnpm dev.",
+    "serverDown": "Não foi possível falar com o servidor do Forgeboard. Ele está rodando? Use forgeboard no terminal (ou pnpm dev, no código-fonte).",
     "round": "rodada {round} de {max}",
     "costToday": "hoje {cost}",
-    "running": "{count} rodando"
+    "running": "{count} rodando",
+    "locked": "Este navegador não tem acesso. Abra o link mostrado no terminal onde o forgeboard está rodando."
   },
   "nav": {
     "main": "Principal",
@@ -206,7 +207,13 @@
     "available": "disponível",
     "missing": "não encontrado",
     "workspaces": "Workspaces",
-    "archived": "arquivado"
+    "archived": "arquivado",
+    "claudeSetupTitle": "Como conectar o Claude",
+    "claudeSetupInstall": "Instale o Claude Code no terminal:",
+    "claudeSetupLogin": "Rode uma vez e faça o login quando ele pedir (ou digite /login):",
+    "claudeSetupAccount": "Entre com a sua assinatura do Claude (Pro ou Max) ou com uma chave de API do Claude Console.",
+    "claudeSetupRestart": "Feche o Claude Code e reinicie o Forgeboard. Aqui deve aparecer \"disponível\".",
+    "claudeSetupNote": "O Forgeboard usa o Claude Code que está instalado na sua máquina e nunca vê a sua senha ou chave. Sem ele, use o crew \"Mock (sem IA)\" para testar."
   },
   "runs": {
     "title": "Execuções",
@@ -313,7 +320,14 @@
     "unarchive": "Desarquivar",
     "delete": "Excluir workspace",
     "deleteConfirm": "Excluir \"{name}\"? As tarefas e regras dele são removidas; seus repositórios no disco não são tocados.",
-    "dangerHint": "Arquivar esconde o workspace e mantém o histórico. Excluir remove tarefas e regras; seus repositórios não são tocados."
+    "dangerHint": "Arquivar esconde o workspace e mantém o histórico. Excluir remove tarefas e regras; seus repositórios não são tocados.",
+    "safety": "Segurança",
+    "forgeCommands": "O que o {name} pode rodar",
+    "cmdStandard": "Padrão",
+    "cmdStandardHint": "Edita arquivos e roda npm, pnpm, yarn, bun, npx e node para instalar e testar. Na prática, isso permite executar qualquer código na sua máquina: use em repositórios em que você confia.",
+    "cmdRestricted": "Restrito",
+    "cmdRestrictedHint": "Só edita arquivos e usa git e ls para leitura. Não roda comandos: o Forgeboard roda as verificações depois e devolve as falhas.",
+    "safetyNote": "O Hawk nunca altera arquivos nem roda comandos, em nenhum dos modos."
   },
   "demo": {
     "banner": "Demo ao vivo: uma equipe simulada roda no seu navegador. Nenhuma IA é chamada e nenhum repositório real é tocado.",

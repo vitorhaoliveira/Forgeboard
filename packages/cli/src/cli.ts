@@ -144,16 +144,19 @@ async function main() {
   const { startServer } = await import("../../../apps/server/src/start.js");
   const server = startServer({
     webUpstream: `http://127.0.0.1:${webPort}`,
-    onListening: (url) => {
+    requireKey: true,
+    onListening: (url, signInUrl) => {
       console.log(`\n  ${orange("▲")} ${bold("Forgeboard")} ${dim(`v${VERSION}`)}\n`);
-      console.log(`  ${dim("➜")} ${bold(url)}`);
+      console.log(`  ${dim("➜")} ${bold(signInUrl)}`);
       console.log(`  ${dim("➜")} ${dim(`Data: ${dataDir}`)}`);
+      console.log(`\n  ${dim("The link signs this browser in; after that")} ${url} ${dim("is enough.")}`);
+      console.log(`  ${dim("Keep it private: it gives access to Forgeboard on this machine.")}`);
       if (!hasClaude) {
         console.log(`\n  ${orange("!")} Claude Code wasn't found. Install it and log in to use real agents,`);
         console.log(`    or set the crew to "Mock (no AI)" to try Forgeboard without it.`);
       }
       console.log(`\n  ${dim("Press Ctrl+C to stop.")}\n`);
-      if (!values["no-open"]) openBrowser(url);
+      if (!values["no-open"]) openBrowser(signInUrl);
     },
   });
   server.on("error", (err: NodeJS.ErrnoException) => {

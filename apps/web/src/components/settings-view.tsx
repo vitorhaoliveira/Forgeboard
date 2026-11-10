@@ -67,8 +67,31 @@ export function SettingsView() {
               </div>
             ))}
           </Card>
+          <ClaudeSetup missing={providers.some((p) => p.id === "claude-code" && !p.available)} />
         </section>
       </div>
     </main>
+  );
+}
+
+/** How to install and log in to Claude Code. Open by default when it's missing. */
+function ClaudeSetup({ missing }: { missing: boolean }) {
+  const t = useTranslations("settings");
+  const code = "rounded-md border border-border bg-bg px-2 py-1 font-mono text-[12px] text-text";
+  return (
+    <details open={missing} className="rounded-[10px] border border-border bg-panel px-4 py-3 text-[13px]">
+      <summary className="cursor-pointer font-medium">{t("claudeSetupTitle")}</summary>
+      <ol className="mt-3 flex list-decimal flex-col gap-2.5 pl-5 text-muted">
+        <li>
+          {t("claudeSetupInstall")} <code className={code}>npm i -g @anthropic-ai/claude-code</code>
+        </li>
+        <li>
+          {t("claudeSetupLogin")} <code className={code}>claude</code>
+        </li>
+        <li>{t("claudeSetupAccount")}</li>
+        <li>{t("claudeSetupRestart")}</li>
+      </ol>
+      <p className="mt-3 text-xs text-muted">{t("claudeSetupNote")}</p>
+    </details>
   );
 }

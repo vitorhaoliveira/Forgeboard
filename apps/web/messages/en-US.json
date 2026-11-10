@@ -7,10 +7,11 @@
     "delete": "Delete",
     "add": "Add",
     "send": "Send",
-    "serverDown": "Can't reach the Forgeboard server at {url}. Start it with pnpm dev.",
+    "serverDown": "Can't reach the Forgeboard server. Is it running? Start it with forgeboard (or pnpm dev, from source).",
     "round": "round {round} of {max}",
     "costToday": "today {cost}",
-    "running": "{count} running"
+    "running": "{count} running",
+    "locked": "This browser doesn't have access. Open the link printed in the terminal where forgeboard is running."
   },
   "nav": {
     "main": "Main",
@@ -206,7 +207,13 @@
     "available": "available",
     "missing": "not found",
     "workspaces": "Workspaces",
-    "archived": "archived"
+    "archived": "archived",
+    "claudeSetupTitle": "How to connect Claude",
+    "claudeSetupInstall": "Install Claude Code in a terminal:",
+    "claudeSetupLogin": "Run it once and log in when it asks (or type /login):",
+    "claudeSetupAccount": "Use your Claude subscription (Pro or Max) or an API key from the Claude Console.",
+    "claudeSetupRestart": "Quit Claude Code and restart Forgeboard. This should then say \"available\".",
+    "claudeSetupNote": "Forgeboard uses the Claude Code installed on your machine and never sees your password or key. Without it, use the \"Mock (no AI)\" crew to try things out."
   },
   "runs": {
     "title": "Runs",
@@ -313,7 +320,14 @@
     "unarchive": "Unarchive",
     "delete": "Delete workspace",
     "deleteConfirm": "Delete \"{name}\"? Its tasks and rules are removed; your repositories on disk aren't touched.",
-    "dangerHint": "Archiving hides the workspace and keeps its history. Deleting removes its tasks and rules; your repositories aren't touched."
+    "dangerHint": "Archiving hides the workspace and keeps its history. Deleting removes its tasks and rules; your repositories aren't touched.",
+    "safety": "Safety",
+    "forgeCommands": "What {name} may run",
+    "cmdStandard": "Standard",
+    "cmdStandardHint": "Edits files and runs npm, pnpm, yarn, bun, npx and node to install and test. In practice this can run any code on your machine: use it on repositories you trust.",
+    "cmdRestricted": "Restricted",
+    "cmdRestrictedHint": "Only edits files and uses git and ls to read. No commands: Forgeboard runs the checks afterwards and sends back any failures.",
+    "safetyNote": "Hawk never changes files or runs commands, in either mode."
   },
   "demo": {
     "banner": "Live demo: a simulated crew runs in your browser. No AI is called and nothing touches a real repository.",

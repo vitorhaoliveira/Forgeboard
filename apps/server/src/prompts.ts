@@ -3,6 +3,7 @@ import type {
   Agent,
   AgentForm,
   AgentQuestion,
+  ForgeCommands,
   FormAnswer,
   PlanStep,
   CheckResult,
@@ -77,9 +78,13 @@ function formatFailedChecks(checks: CheckResult[] | null): string {
   return `\nFailing checks:\n${failed.map((c) => `### ${c.name} (\`${c.command}\`)\n${c.output.slice(-2_000)}`).join("\n\n")}\n`;
 }
 
-export function forgeStartPrompt(agent: Agent, task: Task, rules: HouseRule[]): string {
-  return `${header(agent, "builder", task, rules)}
+const RESTRICTED_NOTE = `
+Commands: in this workspace you can only edit files and use read-only git and ls. Don't try to install packages or run tests; Forgeboard runs the repository's checks after you finish and sends you any failures.
+`;
 
+export function forgeStartPrompt(agent: Agent, task: Task, rules: HouseRule[], commands: ForgeCommands = "standard"): string {
+  return `${header(agent, "builder", task, rules)}
+${commands === "restricted" ? RESTRICTED_NOTE : ""}
 Your task:
 ${task.prompt}
 ${FORGE_ENDING}`;

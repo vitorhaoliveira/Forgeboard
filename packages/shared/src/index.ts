@@ -61,6 +61,12 @@ export type WorkspaceColor = "info" | "success" | "violet" | "pink" | "warning";
 export const WORKSPACE_COLORS: WorkspaceColor[] = ["info", "success", "violet", "pink", "warning"];
 
 /** A project: one or more repositories that share a crew and house rules. */
+/**
+ * What Forge may run in a workspace. "standard": package managers and node (to install and test),
+ * which in practice can run any code. "restricted": file edits only; Forgeboard runs the checks.
+ */
+export type ForgeCommands = "standard" | "restricted";
+
 export interface Workspace {
   id: string;
   name: string;
@@ -68,6 +74,8 @@ export interface Workspace {
   color: WorkspaceColor;
   /** "default" uses the default crew; "custom" keeps its own agent settings. */
   crewMode: "default" | "custom";
+  /** Missing on workspaces created before v1.7.1, which means "standard". */
+  forgeCommands?: ForgeCommands;
   archived: boolean;
   createdAt: string;
 }
