@@ -6,11 +6,22 @@ import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import { nanoid } from "nanoid";
 import { z } from "zod";
-import { isFinished, LOCALES, type RunEvent, type Task } from "@forgeboard/shared";
+import {
+  isFinished,
+  LOCALES,
+  WORKSPACE_COLORS,
+  type HouseRule,
+  type Repo,
+  type RuleScope,
+  type RunEvent,
+  type Task,
+  type Workspace,
+  type WorkspaceColor,
+} from "@forgeboard/shared";
 import { bus } from "./bus.js";
 import { detectChecks } from "./checks.js";
 import { config } from "./config.js";
-import { agents, events, failInterruptedTasks, repos, rules, tasks } from "./db.js";
+import { agents, events, failInterruptedTasks, repos, rules, tasks, workspaces } from "./db.js";
 import { GitError, repoRoot } from "./git.js";
 import {
   answerQuestion,
@@ -59,24 +70,120 @@ function mustGetTask(id: string): Task {
 app.get("/api/health", (c) => c.json({ ok: true }));
 app.get("/api/providers", async (c) => c.json(await listProviders()));
 
-// ---------- Repos ----------
+// ---------- Workspaces ----------
 
-app.get("/api/repos", (c) => c.json(repos.list()));
+const colorSchema = z.enum(WORKSPACE_COLORS as [WorkspaceColor, ...WorkspaceColor[]]);
 
-app.post("/api/repos", async (c) => {
-  const { path: raw } = await body(c, z.object({ path: z.string().min(1) }));
+function hasOpenTasks(filter: { workspaceId?: string; repoId?: string }): boolean {
+  return tasks.list(filter).some((t) => !isFinished(t.status));
+}
+
+/** Validates a folder and registers it as a repo in a workspace. */
+async function addRepoAt(raw: string, workspaceId: string): Promise<Repo> {
   const path = resolve(raw.trim().replace(/^~(?=$|\/)/, process.env.HOME ?? "~"));
   if (!existsSync(path) || !statSync(path).isDirectory()) throw new HttpError(400, `Folder not found: ${path}`);
-
   const root = await repoRoot(path);
-  if (!root) throw new HttpError(400, "This folder isn't a git repository. Run `git init` and make a first commit.");
+  if (!root) throw new HttpError(400, `${path} isn't a git repository. Run \`git init\` and make a first commit.`);
 
   const existing = repos.findByPath(root);
-  if (existing) return c.json(existing);
-
-  const repo = { id: nanoid(10), name: basename(root), path: root, checks: detectChecks(root), createdAt: new Date().toISOString() };
+  if (existing) {
+    if (existing.workspaceId === workspaceId) return existing;
+    const other = workspaces.get(existing.workspaceId);
+    throw new HttpError(400, `${existing.name} already belongs to the workspace "${other?.name ?? "?"}". Move it from that workspace's settings.`);
+  }
+  const repo: Repo = {
+    id: nanoid(10),
+    workspaceId,
+    name: basename(root),
+    path: root,
+    checks: detectChecks(root),
+    createdAt: new Date().toISOString(),
+  };
   repos.insert(repo);
-  return c.json(repo, 201);
+  return repo;
+}
+
+function mustGetWorkspace(id: string): Workspace {
+  const ws = workspaces.get(id);
+  if (!ws) throw new HttpError(404, "Workspace not found");
+  return ws;
+}
+
+app.get("/api/workspaces", (c) => c.json(workspaces.list()));
+
+app.post("/api/workspaces", async (c) => {
+  const input = await body(
+    c,
+    z.object({
+      name: z.string().trim().min(1).max(40),
+      description: z.string().trim().max(80).default(""),
+      color: colorSchema,
+      crewFrom: z.string().nullable().optional(),
+      repoPaths: z.array(z.string().min(1)).max(20).default([]),
+    }),
+  );
+  const source = input.crewFrom ? mustGetWorkspace(input.crewFrom) : null;
+
+  // Validate every folder before creating anything.
+  for (const p of input.repoPaths) {
+    const root = await repoRoot(resolve(p.trim().replace(/^~(?=$|\/)/, process.env.HOME ?? "~")));
+    if (!root) throw new HttpError(400, `${p} isn't a git repository.`);
+    if (repos.findByPath(root)) throw new HttpError(400, `${basename(root)} already belongs to another workspace.`);
+  }
+
+  const ws: Workspace = {
+    id: nanoid(10),
+    name: input.name,
+    description: input.description,
+    color: input.color,
+    crewMode: source ? "custom" : "default",
+    archived: false,
+    createdAt: new Date().toISOString(),
+  };
+  workspaces.save(ws);
+  if (source) for (const agent of agents.forWorkspace(source.id)) agents.saveForWorkspace(ws.id, agent);
+  for (const p of input.repoPaths) await addRepoAt(p, ws.id);
+  return c.json(ws, 201);
+});
+
+app.patch("/api/workspaces/:id", async (c) => {
+  const ws = mustGetWorkspace(c.req.param("id"));
+  const patch = await body(
+    c,
+    z.object({
+      name: z.string().trim().min(1).max(40).optional(),
+      description: z.string().trim().max(80).optional(),
+      color: colorSchema.optional(),
+      crewMode: z.enum(["default", "custom"]).optional(),
+      archived: z.boolean().optional(),
+    }),
+  );
+  const next = { ...ws, ...patch };
+  // Switching to a custom crew starts from the default crew.
+  if (patch.crewMode === "custom" && ws.crewMode !== "custom") {
+    for (const agent of agents.defaults()) agents.saveForWorkspace(ws.id, agent);
+  }
+  workspaces.save(next);
+  return c.json(next);
+});
+
+app.delete("/api/workspaces/:id", (c) => {
+  const ws = mustGetWorkspace(c.req.param("id"));
+  if (hasOpenTasks({ workspaceId: ws.id })) {
+    throw new FlowError("This workspace has open tasks. Merge, discard or wait for them first.");
+  }
+  workspaces.remove(ws.id);
+  return c.body(null, 204);
+});
+
+// ---------- Repos ----------
+
+app.get("/api/repos", (c) => c.json(repos.list(c.req.query("workspaceId"))));
+
+app.post("/api/repos", async (c) => {
+  const { path, workspaceId } = await body(c, z.object({ path: z.string().min(1), workspaceId: z.string().min(1) }));
+  mustGetWorkspace(workspaceId);
+  return c.json(await addRepoAt(path, workspaceId), 201);
 });
 
 const checkSchema = z.object({ name: z.string().trim().min(1).max(40), command: z.string().trim().min(1).max(500) });
@@ -84,23 +191,34 @@ const checkSchema = z.object({ name: z.string().trim().min(1).max(40), command: 
 app.patch("/api/repos/:id", async (c) => {
   const repo = repos.get(c.req.param("id"));
   if (!repo) throw new HttpError(404, "Repo not found");
-  const { checks } = await body(c, z.object({ checks: z.array(checkSchema).max(10) }));
-  repos.setChecks(repo.id, checks);
+  const { checks, workspaceId } = await body(
+    c,
+    z.object({ checks: z.array(checkSchema).max(10).optional(), workspaceId: z.string().optional() }),
+  );
+  if (checks) repos.setChecks(repo.id, checks);
+  if (workspaceId && workspaceId !== repo.workspaceId) {
+    mustGetWorkspace(workspaceId);
+    if (hasOpenTasks({ repoId: repo.id })) throw new FlowError("This repository has open tasks. Finish them before moving it.");
+    repos.move(repo.id, workspaceId);
+  }
   return c.json(repos.get(repo.id));
 });
 
 app.delete("/api/repos/:id", (c) => {
-  repos.remove(c.req.param("id"));
+  const id = c.req.param("id");
+  if (hasOpenTasks({ repoId: id })) throw new FlowError("This repository has open tasks. Merge, discard or wait for them first.");
+  repos.remove(id);
   return c.body(null, 204);
 });
 
 // ---------- Crew ----------
 
-app.get("/api/agents", (c) => c.json(agents.list()));
+app.get("/api/agents", (c) => c.json(agents.forWorkspace(c.req.query("workspaceId"))));
 
 app.patch("/api/agents/:id", async (c) => {
   const id = c.req.param("id");
   if (id !== "forge" && id !== "hawk") throw new HttpError(404, "Agent not found");
+  const workspaceId = c.req.query("workspaceId");
   const patch = await body(
     c,
     z.object({
@@ -110,28 +228,63 @@ app.patch("/api/agents/:id", async (c) => {
       instructions: z.string().max(2_000).optional(),
     }),
   );
-  const agent = { ...agents.get(id), ...patch };
-  agents.save(agent);
+  if (workspaceId) {
+    const ws = mustGetWorkspace(workspaceId);
+    if (ws.crewMode !== "custom") workspaces.save({ ...ws, crewMode: "custom" });
+    agents.saveForWorkspace(ws.id, { ...agents.get(ws.id, id), ...patch });
+    return c.json(agents.get(ws.id, id));
+  }
+  const agent = { ...agents.defaults().find((a) => a.id === id)!, ...patch };
+  agents.saveDefault(agent);
   return c.json(agent);
 });
 
-app.get("/api/rules", (c) => {
-  const repoId = c.req.query("repoId");
-  if (!repoId) throw new HttpError(400, "repoId is required");
-  return c.json(rules.list(repoId));
+/** Puts a workspace's agent back to the default crew's settings. */
+app.delete("/api/agents/:id", (c) => {
+  const id = c.req.param("id");
+  const workspaceId = c.req.query("workspaceId");
+  if ((id !== "forge" && id !== "hawk") || !workspaceId) throw new HttpError(400, "workspaceId is required");
+  const ws = mustGetWorkspace(workspaceId);
+  agents.saveForWorkspace(ws.id, agents.defaults().find((a) => a.id === id)!);
+  return c.json(agents.get(ws.id, id));
 });
+
+// ---------- House rules ----------
+
+const scopeSchema = z.enum(["global", "workspace", "repo"]);
+
+app.get("/api/rules", (c) => {
+  const scope = scopeSchema.safeParse(c.req.query("scope"));
+  if (!scope.success) throw new HttpError(400, "scope must be global, workspace or repo");
+  return c.json(rules.list(scope.data, c.req.query("id")));
+});
+
+function placeRule(scope: RuleScope, id?: string | null): Pick<HouseRule, "scope" | "workspaceId" | "repoId"> {
+  if (scope === "global") return { scope, workspaceId: null, repoId: null };
+  if (!id) throw new HttpError(400, "id is required for this scope");
+  if (scope === "workspace") return { scope, workspaceId: mustGetWorkspace(id).id, repoId: null };
+  if (!repos.get(id)) throw new HttpError(404, "Repo not found");
+  return { scope, workspaceId: null, repoId: id };
+}
 
 app.post("/api/rules", async (c) => {
   const input = await body(
     c,
     z.object({
-      repoId: z.string().min(1),
+      scope: scopeSchema,
+      id: z.string().nullable().optional(),
       text: z.string().trim().min(3).max(500),
       source: z.enum(["you", "answer", "hawk"]).default("you"),
     }),
   );
-  if (!repos.get(input.repoId)) throw new HttpError(404, "Repo not found");
-  const rule = { id: nanoid(10), ...input, enabled: true, createdAt: new Date().toISOString() };
+  const rule: HouseRule = {
+    id: nanoid(10),
+    ...placeRule(input.scope, input.id),
+    text: input.text,
+    source: input.source,
+    enabled: true,
+    createdAt: new Date().toISOString(),
+  };
   rules.save(rule);
   return c.json(rule, 201);
 });
@@ -139,8 +292,22 @@ app.post("/api/rules", async (c) => {
 app.patch("/api/rules/:id", async (c) => {
   const rule = rules.get(c.req.param("id"));
   if (!rule) throw new HttpError(404, "Rule not found");
-  const patch = await body(c, z.object({ enabled: z.boolean().optional(), text: z.string().trim().min(3).max(500).optional() }));
-  const next = { ...rule, ...patch };
+  const patch = await body(
+    c,
+    z.object({
+      enabled: z.boolean().optional(),
+      text: z.string().trim().min(3).max(500).optional(),
+      /** Move the rule to another level. */
+      scope: scopeSchema.optional(),
+      id: z.string().nullable().optional(),
+    }),
+  );
+  const next: HouseRule = {
+    ...rule,
+    ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+    ...(patch.text ? { text: patch.text } : {}),
+    ...(patch.scope ? placeRule(patch.scope, patch.id) : {}),
+  };
   rules.save(next);
   return c.json(next);
 });
@@ -152,7 +319,7 @@ app.delete("/api/rules/:id", (c) => {
 
 // ---------- Tasks ----------
 
-app.get("/api/tasks", (c) => c.json(tasks.list(c.req.query("repoId"))));
+app.get("/api/tasks", (c) => c.json(tasks.list({ workspaceId: c.req.query("workspaceId"), repoId: c.req.query("repoId") })));
 
 function makeTitle(prompt: string): string {
   const firstLine = prompt.split("\n")[0]?.trim() ?? "";
@@ -169,11 +336,13 @@ app.post("/api/tasks", async (c) => {
       maxRounds: z.number().int().min(1).max(5).optional(),
     }),
   );
-  if (!repos.get(input.repoId)) throw new HttpError(404, "Repo not found");
+  const repo = repos.get(input.repoId);
+  if (!repo) throw new HttpError(404, "Repo not found");
 
   const now = new Date().toISOString();
   const task: Task = {
     id: nanoid(12),
+    workspaceId: repo.workspaceId,
     repoId: input.repoId,
     prompt: input.prompt,
     title: makeTitle(input.prompt),

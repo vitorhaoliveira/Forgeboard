@@ -3,6 +3,7 @@ import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
+import { NewWorkspaceDialog } from "@/components/new-workspace-dialog";
 import { Rail } from "@/components/rail";
 import { ServerBanner } from "@/components/server-banner";
 import { AppStateProvider } from "@/lib/app-state";
@@ -29,6 +30,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 {children}
               </div>
             </div>
+            <NewWorkspaceDialog />
           </AppStateProvider>
         </NextIntlClientProvider>
       </body>

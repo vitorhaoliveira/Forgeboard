@@ -41,6 +41,8 @@ export interface Agent {
   personality: Personality;
   /** Extra instructions added to the agent's prompt. */
   instructions: string;
+  /** In a workspace with its own crew: true when this agent differs from the default. */
+  customized?: boolean;
 }
 
 export interface CheckCommand {
@@ -55,8 +57,33 @@ export interface CheckResult extends CheckCommand {
   output: string;
 }
 
+export type WorkspaceColor = "info" | "success" | "violet" | "pink" | "warning";
+export const WORKSPACE_COLORS: WorkspaceColor[] = ["info", "success", "violet", "pink", "warning"];
+
+/** A project: one or more repositories that share a crew and house rules. */
+export interface Workspace {
+  id: string;
+  name: string;
+  description: string;
+  color: WorkspaceColor;
+  /** "default" uses the default crew; "custom" keeps its own agent settings. */
+  crewMode: "default" | "custom";
+  archived: boolean;
+  createdAt: string;
+}
+
+export interface CreateWorkspaceInput {
+  name: string;
+  description?: string;
+  color: WorkspaceColor;
+  /** Copy the crew from another workspace instead of using the default crew. */
+  crewFrom?: string | null;
+  repoPaths?: string[];
+}
+
 export interface Repo {
   id: string;
+  workspaceId: string;
   name: string;
   path: string;
   checks: CheckCommand[];
@@ -65,9 +92,14 @@ export interface Repo {
 
 export type RuleSource = "you" | "answer" | "hawk";
 
+/** Where a rule applies: everywhere, in one workspace, or in one repository. */
+export type RuleScope = "global" | "workspace" | "repo";
+
 export interface HouseRule {
   id: string;
-  repoId: string;
+  scope: RuleScope;
+  workspaceId: string | null;
+  repoId: string | null;
   text: string;
   enabled: boolean;
   source: RuleSource;
@@ -102,6 +134,7 @@ export interface AgentQuestion {
 
 export interface Task {
   id: string;
+  workspaceId: string;
   repoId: string;
   prompt: string;
   title: string;

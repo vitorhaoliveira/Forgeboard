@@ -1,24 +1,32 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { Agent, AgentId, ProviderInfo, Repo, Task } from "@forgeboard/shared";
+import type { Agent, AgentId, ProviderInfo, Repo, Task, Workspace } from "@forgeboard/shared";
 import { api, ServerDownError } from "./api";
 
-const REPO_KEY = "forgeboard:selectedRepo";
+const LAST_REPO_KEY = "forgeboard:lastRepo";
 
 interface AppState {
+  workspaces: Workspace[];
+  /** Workspaces shown in the rail (not archived). */
+  activeWorkspaces: Workspace[];
+  workspace: (id: string | undefined) => Workspace | undefined;
+  refreshWorkspaces: () => Promise<void>;
   repos: Repo[];
-  selectedRepo: Repo | null;
-  selectRepo: (id: string) => void;
-  addRepo: (path: string) => Promise<Repo>;
+  repo: (id: string | undefined) => Repo | undefined;
   refreshRepos: () => Promise<void>;
-  /** Tasks of the selected repository, newest first. */
+  /** Every task, newest first. Views filter by workspace or repo. */
   tasks: Task[];
   refreshTasks: () => Promise<void>;
   providers: ProviderInfo[];
-  agents: Agent[];
-  agentName: (id: AgentId) => string;
-  refreshAgents: () => Promise<void>;
+  /** Crew per workspace id; "default" holds the default crew. */
+  crews: Record<string, Agent[]>;
+  agentName: (id: AgentId, workspaceId?: string) => string;
+  refreshCrews: () => Promise<void>;
+  lastRepoId: string | null;
+  rememberRepo: (id: string) => void;
+  newWorkspaceOpen: boolean;
+  setNewWorkspaceOpen: (open: boolean) => void;
   /** True when the local server can't be reached. */
   serverDown: boolean;
   loaded: boolean;
@@ -26,30 +34,34 @@ interface AppState {
 
 const AppStateContext = createContext<AppState | null>(null);
 
-function readStoredRepo(): string | null {
+function readStored(key: string): string | null {
   try {
-    return localStorage.getItem(REPO_KEY);
+    return localStorage.getItem(key);
   } catch {
     return null;
   }
 }
 
-function storeRepo(id: string) {
+function store(key: string, value: string) {
   try {
-    localStorage.setItem(REPO_KEY, id);
+    localStorage.setItem(key, value);
   } catch {
-    // Storage blocked: the selection just won't persist.
+    // Storage blocked: the choice just won't persist.
   }
 }
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [repos, setRepos] = useState<Repo[]>([]);
-  const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const [crews, setCrews] = useState<Record<string, Agent[]>>({});
+  const [lastRepoId, setLastRepoId] = useState<string | null>(null);
+  const [newWorkspaceOpen, setNewWorkspaceOpen] = useState(false);
   const [serverDown, setServerDown] = useState(false);
   const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => setLastRepoId(readStored(LAST_REPO_KEY)), []);
 
   const guard = useCallback(async (fn: () => Promise<void>) => {
     try {
@@ -61,88 +73,79 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const refreshRepos = useCallback(
+  const refreshRepos = useCallback(() => guard(async () => setRepos(await api.repos())), [guard]);
+  const refreshTasks = useCallback(() => guard(async () => setTasks(await api.tasks())), [guard]);
+
+  const refreshCrews = useCallback(
     () =>
       guard(async () => {
-        const list = await api.repos();
-        setRepos(list);
-        setSelectedRepoId((current) => {
-          const wanted = current ?? readStoredRepo();
-          return list.some((r) => r.id === wanted) ? wanted : (list[0]?.id ?? null);
-        });
+        const list = await api.workspaces();
+        const [defaults, ...perWs] = await Promise.all([api.agents(), ...list.map((w) => api.agents(w.id))]);
+        const next: Record<string, Agent[]> = { default: defaults! };
+        list.forEach((w, i) => (next[w.id] = perWs[i]!));
+        setCrews(next);
       }),
     [guard],
   );
 
-  const refreshAgents = useCallback(
+  const refreshWorkspaces = useCallback(
     () =>
       guard(async () => {
-        const [a, p] = await Promise.all([api.agents(), api.providers()]);
-        setAgents(a);
-        setProviders(p);
+        setWorkspaces(await api.workspaces());
+        setProviders(await api.providers());
       }),
     [guard],
-  );
-
-  const refreshTasks = useCallback(
-    () =>
-      guard(async () => {
-        setTasks(selectedRepoId ? await api.tasks(selectedRepoId) : []);
-      }),
-    [guard, selectedRepoId],
   );
 
   useEffect(() => {
-    void Promise.all([refreshRepos(), refreshAgents()]).finally(() => setLoaded(true));
-  }, [refreshRepos, refreshAgents]);
+    void Promise.all([refreshWorkspaces(), refreshRepos(), refreshTasks(), refreshCrews()]).finally(() => setLoaded(true));
+  }, [refreshWorkspaces, refreshRepos, refreshTasks, refreshCrews]);
 
   // Keep statuses fresh everywhere. Polling a localhost server is cheap.
   useEffect(() => {
-    void refreshTasks();
     const id = setInterval(() => {
-      if (serverDown) void refreshRepos();
+      if (serverDown) void Promise.all([refreshWorkspaces(), refreshRepos(), refreshCrews()]);
       void refreshTasks();
     }, 2500);
     return () => clearInterval(id);
-  }, [refreshTasks, refreshRepos, serverDown]);
+  }, [refreshTasks, refreshRepos, refreshWorkspaces, refreshCrews, serverDown]);
 
-  const selectRepo = useCallback((id: string) => {
-    setSelectedRepoId(id);
-    storeRepo(id);
+  const rememberRepo = useCallback((id: string) => {
+    setLastRepoId(id);
+    store(LAST_REPO_KEY, id);
   }, []);
 
-  const addRepo = useCallback(
-    async (path: string) => {
-      const repo = await api.addRepo(path);
-      setRepos((prev) => [repo, ...prev.filter((r) => r.id !== repo.id)]);
-      selectRepo(repo.id);
-      return repo;
-    },
-    [selectRepo],
-  );
-
   const agentName = useCallback(
-    (id: AgentId) => agents.find((a) => a.id === id)?.name ?? (id === "forge" ? "Forge" : "Hawk"),
-    [agents],
+    (id: AgentId, workspaceId?: string) =>
+      (workspaceId && crews[workspaceId]?.find((a) => a.id === id)?.name) ||
+      crews.default?.find((a) => a.id === id)?.name ||
+      (id === "forge" ? "Forge" : "Hawk"),
+    [crews],
   );
 
   const value = useMemo<AppState>(
     () => ({
+      workspaces,
+      activeWorkspaces: workspaces.filter((w) => !w.archived),
+      workspace: (id) => workspaces.find((w) => w.id === id),
+      refreshWorkspaces,
       repos,
-      selectedRepo: repos.find((r) => r.id === selectedRepoId) ?? null,
-      selectRepo,
-      addRepo,
+      repo: (id) => repos.find((r) => r.id === id),
       refreshRepos,
       tasks,
       refreshTasks,
       providers,
-      agents,
+      crews,
       agentName,
-      refreshAgents,
+      refreshCrews,
+      lastRepoId,
+      rememberRepo,
+      newWorkspaceOpen,
+      setNewWorkspaceOpen,
       serverDown,
       loaded,
     }),
-    [repos, selectedRepoId, selectRepo, addRepo, refreshRepos, tasks, refreshTasks, providers, agents, agentName, refreshAgents, serverDown, loaded],
+    [workspaces, refreshWorkspaces, repos, refreshRepos, tasks, refreshTasks, providers, crews, agentName, refreshCrews, lastRepoId, rememberRepo, newWorkspaceOpen, serverDown, loaded],
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
@@ -152,4 +155,15 @@ export function useAppState(): AppState {
   const ctx = useContext(AppStateContext);
   if (!ctx) throw new Error("useAppState must be used inside AppStateProvider");
   return ctx;
+}
+
+/** The workspace a part of the page belongs to, so agent names follow its crew. */
+const WorkspaceScopeContext = createContext<string | undefined>(undefined);
+
+export function WorkspaceScope({ workspaceId, children }: { workspaceId: string | undefined; children: ReactNode }) {
+  return <WorkspaceScopeContext.Provider value={workspaceId}>{children}</WorkspaceScopeContext.Provider>;
+}
+
+export function useWorkspaceScope(): string | undefined {
+  return useContext(WorkspaceScopeContext);
 }

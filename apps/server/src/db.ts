@@ -1,14 +1,17 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { nanoid } from "nanoid";
 import type {
   Agent,
   AgentId,
   HouseRule,
   Repo,
+  RuleScope,
   RunEvent,
   RunEventPayload,
   Task,
+  Workspace,
 } from "@forgeboard/shared";
 import { config } from "./config.js";
 
@@ -20,6 +23,12 @@ const db = new DatabaseSync(join(config.dataDir, "forgeboard-v1.db"));
 db.exec(`
   PRAGMA journal_mode = WAL;
   PRAGMA foreign_keys = ON;
+
+  CREATE TABLE IF NOT EXISTS workspaces (
+    id TEXT PRIMARY KEY,
+    data TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
 
   CREATE TABLE IF NOT EXISTS repos (
     id TEXT PRIMARY KEY,
@@ -44,14 +53,23 @@ db.exec(`
     PRIMARY KEY (task_id, seq)
   );
 
+  -- The default crew.
   CREATE TABLE IF NOT EXISTS agents (
     id TEXT PRIMARY KEY,
     data TEXT NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS rules (
+  -- Crew overrides for workspaces with their own crew.
+  CREATE TABLE IF NOT EXISTS workspace_agents (
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    agent_id TEXT NOT NULL,
+    data TEXT NOT NULL,
+    PRIMARY KEY (workspace_id, agent_id)
+  );
+
+  -- Rules at three levels: global, workspace or repo (scope lives in data).
+  CREATE TABLE IF NOT EXISTS house_rules (
     id TEXT PRIMARY KEY,
-    repo_id TEXT NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
     data TEXT NOT NULL,
     created_at TEXT NOT NULL
   );
@@ -63,11 +81,30 @@ db.exec(`
   );
 `);
 
+// ---------- Migrations from v1.0 ----------
+
+const repoColumns = db.prepare("PRAGMA table_info(repos)").all().map((c) => String(c.name));
+if (!repoColumns.includes("workspace_id")) {
+  db.exec("ALTER TABLE repos ADD COLUMN workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE");
+}
+
+// v1.0 kept rules per repo in a `rules` table.
+const legacyRules = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'rules'").get();
+if (legacyRules) {
+  for (const r of db.prepare("SELECT data, repo_id, created_at FROM rules").all()) {
+    const old = JSON.parse(String(r.data)) as Omit<HouseRule, "scope" | "workspaceId">;
+    const rule: HouseRule = { ...old, scope: "repo", workspaceId: null, repoId: String(r.repo_id) };
+    db.prepare("INSERT OR IGNORE INTO house_rules (id, data, created_at) VALUES (?, ?, ?)").run(rule.id, JSON.stringify(rule), String(r.created_at));
+  }
+  db.exec("DROP TABLE rules");
+}
+
 type Row = Record<string, unknown>;
 
 function toRepo(r: Row): Repo {
   return {
     id: String(r.id),
+    workspaceId: String(r.workspace_id ?? ""),
     name: String(r.name),
     path: String(r.path),
     checks: JSON.parse(String(r.checks)),
@@ -75,9 +112,58 @@ function toRepo(r: Row): Repo {
   };
 }
 
+// ---------- Workspaces ----------
+
+export const workspaces = {
+  list(): Workspace[] {
+    return db
+      .prepare("SELECT data FROM workspaces ORDER BY created_at")
+      .all()
+      .map((r) => JSON.parse(String(r.data)) as Workspace);
+  },
+  get(id: string): Workspace | undefined {
+    const r = db.prepare("SELECT data FROM workspaces WHERE id = ?").get(id);
+    return r ? (JSON.parse(String(r.data)) as Workspace) : undefined;
+  },
+  save(ws: Workspace): void {
+    db.prepare(
+      "INSERT INTO workspaces (id, data, created_at) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+    ).run(ws.id, JSON.stringify(ws), ws.createdAt);
+  },
+  remove(id: string): void {
+    for (const rule of rules.all()) {
+      const repo = rule.repoId ? repos.get(rule.repoId) : undefined;
+      if (rule.workspaceId === id || repo?.workspaceId === id) rules.remove(rule.id);
+    }
+    db.prepare("DELETE FROM repos WHERE workspace_id = ?").run(id);
+    db.prepare("DELETE FROM workspaces WHERE id = ?").run(id);
+  },
+};
+
+// Repos added before workspaces existed move into a "Personal" workspace.
+const orphanRepos = db.prepare("SELECT COUNT(*) AS n FROM repos WHERE workspace_id IS NULL").get();
+if (Number(orphanRepos?.n) > 0) {
+  const ws: Workspace = {
+    id: nanoid(10),
+    name: "Personal",
+    description: "",
+    color: "violet",
+    crewMode: "default",
+    archived: false,
+    createdAt: new Date().toISOString(),
+  };
+  workspaces.save(ws);
+  db.prepare("UPDATE repos SET workspace_id = ? WHERE workspace_id IS NULL").run(ws.id);
+}
+
+// ---------- Repos ----------
+
 export const repos = {
-  list(): Repo[] {
-    return db.prepare("SELECT * FROM repos ORDER BY created_at DESC").all().map(toRepo);
+  list(workspaceId?: string): Repo[] {
+    const rows = workspaceId
+      ? db.prepare("SELECT * FROM repos WHERE workspace_id = ? ORDER BY created_at").all(workspaceId)
+      : db.prepare("SELECT * FROM repos ORDER BY created_at").all();
+    return rows.map(toRepo);
   },
   get(id: string): Repo | undefined {
     const r = db.prepare("SELECT * FROM repos WHERE id = ?").get(id);
@@ -88,8 +174,9 @@ export const repos = {
     return r ? toRepo(r) : undefined;
   },
   insert(repo: Repo): void {
-    db.prepare("INSERT INTO repos (id, name, path, checks, created_at) VALUES (?, ?, ?, ?, ?)").run(
+    db.prepare("INSERT INTO repos (id, workspace_id, name, path, checks, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(
       repo.id,
+      repo.workspaceId,
       repo.name,
       repo.path,
       JSON.stringify(repo.checks),
@@ -99,21 +186,37 @@ export const repos = {
   setChecks(id: string, checks: Repo["checks"]): void {
     db.prepare("UPDATE repos SET checks = ? WHERE id = ?").run(JSON.stringify(checks), id);
   },
+  /** Moves a repo (and its tasks) to another workspace. */
+  move(id: string, workspaceId: string): void {
+    db.prepare("UPDATE repos SET workspace_id = ? WHERE id = ?").run(workspaceId, id);
+    for (const task of tasks.list().filter((t) => t.repoId === id)) tasks.update(task.id, { workspaceId });
+  },
   remove(id: string): void {
+    for (const rule of rules.all().filter((r) => r.repoId === id)) rules.remove(rule.id);
     db.prepare("DELETE FROM repos WHERE id = ?").run(id);
   },
 };
 
+// ---------- Tasks ----------
+
+function readTask(r: Row): Task {
+  const task = JSON.parse(String(r.data)) as Task;
+  // Tasks from v1.0 have no workspace; it follows from the repo.
+  if (!task.workspaceId) task.workspaceId = repos.get(task.repoId)?.workspaceId ?? "";
+  return task;
+}
+
 export const tasks = {
-  list(repoId?: string): Task[] {
-    const rows = repoId
-      ? db.prepare("SELECT data FROM tasks WHERE repo_id = ? ORDER BY created_at DESC").all(repoId)
+  list(filter: { workspaceId?: string; repoId?: string } = {}): Task[] {
+    const rows = filter.repoId
+      ? db.prepare("SELECT data FROM tasks WHERE repo_id = ? ORDER BY created_at DESC").all(filter.repoId)
       : db.prepare("SELECT data FROM tasks ORDER BY created_at DESC").all();
-    return rows.map((r) => JSON.parse(String(r.data)) as Task);
+    const list = rows.map(readTask);
+    return filter.workspaceId ? list.filter((t) => t.workspaceId === filter.workspaceId) : list;
   },
   get(id: string): Task | undefined {
     const r = db.prepare("SELECT data FROM tasks WHERE id = ?").get(id);
-    return r ? (JSON.parse(String(r.data)) as Task) : undefined;
+    return r ? readTask(r) : undefined;
   },
   insert(task: Task): void {
     db.prepare("INSERT INTO tasks (id, repo_id, data, created_at) VALUES (?, ?, ?, ?)").run(
@@ -181,6 +284,8 @@ export const events = {
   },
 };
 
+// ---------- Crew ----------
+
 const DEFAULT_AGENTS: Agent[] = [
   {
     id: "forge",
@@ -198,8 +303,13 @@ const DEFAULT_AGENTS: Agent[] = [
   },
 ];
 
+function sameAgent(a: Agent, b: Agent): boolean {
+  return a.name === b.name && a.provider === b.provider && a.personality === b.personality && a.instructions === b.instructions;
+}
+
 export const agents = {
-  list(): Agent[] {
+  /** The default crew. */
+  defaults(): Agent[] {
     const stored = new Map(
       db
         .prepare("SELECT data FROM agents")
@@ -211,34 +321,77 @@ export const agents = {
     );
     return DEFAULT_AGENTS.map((d) => stored.get(d.id) ?? d);
   },
-  get(id: AgentId): Agent {
-    return agents.list().find((a) => a.id === id)!;
+  saveDefault(agent: Agent): void {
+    const { customized: _c, ...data } = agent;
+    db.prepare("INSERT INTO agents (id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data").run(
+      agent.id,
+      JSON.stringify(data),
+    );
   },
-  save(agent: Agent): void {
+  /** The crew a workspace actually uses. */
+  forWorkspace(workspaceId: string | undefined): Agent[] {
+    const defaults = agents.defaults();
+    const ws = workspaceId ? workspaces.get(workspaceId) : undefined;
+    if (!ws || ws.crewMode !== "custom") return defaults;
+    const overrides = new Map(
+      db
+        .prepare("SELECT agent_id, data FROM workspace_agents WHERE workspace_id = ?")
+        .all(ws.id)
+        .map((r) => [String(r.agent_id), JSON.parse(String(r.data)) as Agent] as const),
+    );
+    return defaults.map((d) => {
+      const o = overrides.get(d.id);
+      return o ? { ...o, customized: !sameAgent(o, d) } : { ...d, customized: false };
+    });
+  },
+  get(workspaceId: string | undefined, id: AgentId): Agent {
+    return agents.forWorkspace(workspaceId).find((a) => a.id === id)!;
+  },
+  saveForWorkspace(workspaceId: string, agent: Agent): void {
+    const { customized: _c, ...data } = agent;
     db.prepare(
-      "INSERT INTO agents (id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
-    ).run(agent.id, JSON.stringify(agent));
+      "INSERT INTO workspace_agents (workspace_id, agent_id, data) VALUES (?, ?, ?) ON CONFLICT(workspace_id, agent_id) DO UPDATE SET data = excluded.data",
+    ).run(workspaceId, agent.id, JSON.stringify(data));
+  },
+  resetForWorkspace(workspaceId: string, id: AgentId): void {
+    db.prepare("DELETE FROM workspace_agents WHERE workspace_id = ? AND agent_id = ?").run(workspaceId, id);
   },
 };
 
+// ---------- House rules ----------
+
 export const rules = {
-  list(repoId: string): HouseRule[] {
+  all(): HouseRule[] {
     return db
-      .prepare("SELECT data FROM rules WHERE repo_id = ? ORDER BY created_at DESC")
-      .all(repoId)
+      .prepare("SELECT data FROM house_rules ORDER BY created_at DESC")
+      .all()
       .map((r) => JSON.parse(String(r.data)) as HouseRule);
   },
+  /** Rules defined at exactly one level. */
+  list(scope: RuleScope, id?: string): HouseRule[] {
+    return rules.all().filter(
+      (r) =>
+        r.scope === scope &&
+        (scope === "global" || (scope === "workspace" ? r.workspaceId === id : r.repoId === id)),
+    );
+  },
+  /** Every rule that applies to work in a repo: global, its workspace's and its own. */
+  forRepo(repo: Repo): HouseRule[] {
+    return rules
+      .all()
+      .filter((r) => r.scope === "global" || (r.scope === "workspace" && r.workspaceId === repo.workspaceId) || (r.scope === "repo" && r.repoId === repo.id));
+  },
   get(id: string): HouseRule | undefined {
-    const r = db.prepare("SELECT data FROM rules WHERE id = ?").get(id);
+    const r = db.prepare("SELECT data FROM house_rules WHERE id = ?").get(id);
     return r ? (JSON.parse(String(r.data)) as HouseRule) : undefined;
   },
   save(rule: HouseRule): void {
     db.prepare(
-      "INSERT INTO rules (id, repo_id, data, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
-    ).run(rule.id, rule.repoId, JSON.stringify(rule), rule.createdAt);
+      "INSERT INTO house_rules (id, data, created_at) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+    ).run(rule.id, JSON.stringify(rule), rule.createdAt);
   },
   remove(id: string): void {
-    db.prepare("DELETE FROM rules WHERE id = ?").run(id);
+    db.prepare("DELETE FROM house_rules WHERE id = ?").run(id);
   },
 };
 

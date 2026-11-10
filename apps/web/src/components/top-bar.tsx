@@ -1,122 +1,48 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { ChevronDown, Folder, Loader2, Plus, Sparkles } from "lucide-react";
-import type { Locale } from "@forgeboard/shared";
-import { isActive } from "@forgeboard/shared";
+import { ChevronDown, Loader2, Sparkles } from "lucide-react";
+import { isActive, type Locale, type Task } from "@forgeboard/shared";
 import { api } from "@/lib/api";
 import { useAppState } from "@/lib/app-state";
 import { cn, formatCost } from "@/lib/utils";
 import { Button, Kbd } from "./ui";
 
-export function RepoSwitcher() {
-  const t = useTranslations("repo");
-  const { repos, selectedRepo, selectRepo } = useAppState();
-  const [adding, setAdding] = useState(false);
-
-  return (
-    <div className="relative flex items-center gap-1.5">
-      <label className="relative flex h-[38px] items-center gap-2 rounded-[9px] border border-border bg-panel pr-2 pl-3">
-        <span className="sr-only">{t("switch")}</span>
-        <Folder className="size-[15px] text-muted" aria-hidden="true" />
-        <select
-          value={selectedRepo?.id ?? ""}
-          onChange={(e) => selectRepo(e.target.value)}
-          disabled={repos.length === 0}
-          className="appearance-none bg-transparent pr-5 text-sm font-medium outline-none"
-        >
-          {repos.length === 0 && <option value="">—</option>}
-          {repos.map((r) => (
-            <option key={r.id} value={r.id} className="bg-panel">
-              {r.name}
-            </option>
-          ))}
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-2 size-3.5 text-muted" aria-hidden="true" />
-      </label>
-      <button
-        type="button"
-        onClick={() => setAdding((v) => !v)}
-        aria-label={t("add")}
-        title={t("add")}
-        aria-expanded={adding}
-        className="grid size-[38px] place-items-center rounded-[9px] border border-border bg-panel text-muted hover:text-text"
-      >
-        <Plus className="size-4" aria-hidden="true" />
-      </button>
-      {adding && <AddRepoPopover onDone={() => setAdding(false)} />}
-    </div>
-  );
-}
-
-function AddRepoPopover({ onDone }: { onDone: () => void }) {
-  const t = useTranslations("repo");
-  const tc = useTranslations("common");
-  const { addRepo } = useAppState();
-  const [path, setPath] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await addRepo(path);
-      onDone();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <form onSubmit={submit} className="absolute top-12 left-0 z-20 w-[380px] space-y-2 rounded-xl border border-border-strong bg-panel p-3 shadow-2xl">
-      <label className="block text-xs font-medium text-muted" htmlFor="repo-path">
-        {t("add")}
-      </label>
-      <input
-        id="repo-path"
-        autoFocus
-        value={path}
-        onChange={(e) => setPath(e.target.value)}
-        placeholder={t("addPlaceholder")}
-        className="h-9 w-full rounded-lg border border-border bg-bg px-3 font-mono text-[12.5px] outline-none focus:border-border-strong"
-      />
-      <p className="text-xs text-muted">{t("addHint")}</p>
-      {error && <p className="text-xs text-danger">{error}</p>}
-      <div className="flex justify-end gap-2">
-        <Button variant="ghost" onClick={onDone}>
-          {tc("cancel")}
-        </Button>
-        <Button variant="primary" type="submit" disabled={!path.trim() || busy}>
-          {busy && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
-          {tc("add")}
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-export function Composer({ className }: { className?: string }) {
+/**
+ * The task bar. Inside a workspace it picks among that workspace's repos;
+ * on the "All" desk it lists every repo grouped by workspace.
+ */
+export function Composer({ workspaceId, repoId: preferredRepo, className }: { workspaceId?: string; repoId?: string; className?: string }) {
   const t = useTranslations("composer");
   const router = useRouter();
   const locale = useLocale() as Locale;
-  const { selectedRepo, refreshTasks } = useAppState();
+  const { repos, activeWorkspaces, workspace, lastRepoId, rememberRepo, refreshTasks } = useAppState();
   const [prompt, setPrompt] = useState("");
+  const [repoId, setRepoId] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const visibleWs = workspaceId ? activeWorkspaces.filter((w) => w.id === workspaceId) : activeWorkspaces;
+  const choices = repos.filter((r) => visibleWs.some((w) => w.id === r.workspaceId));
+
+  // Pick a sensible repo: the filtered one, the last used, or the first available.
+  useEffect(() => {
+    if (choices.some((r) => r.id === repoId) && !preferredRepo) return;
+    const pick = [preferredRepo, lastRepoId].find((id) => id && choices.some((r) => r.id === id)) ?? choices[0]?.id ?? "";
+    setRepoId(pick);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [choices.map((r) => r.id).join(","), preferredRepo, lastRepoId]);
+
   async function submit(e?: FormEvent) {
     e?.preventDefault();
-    if (!selectedRepo || !prompt.trim() || busy) return;
+    if (!repoId || !prompt.trim() || busy) return;
     setBusy(true);
     setError(null);
     try {
-      const task = await api.createTask({ repoId: selectedRepo.id, prompt: prompt.trim(), locale });
+      const task = await api.createTask({ repoId, prompt: prompt.trim(), locale });
+      rememberRepo(repoId);
       setPrompt("");
       void refreshTasks();
       router.push(`/runs/${task.id}`);
@@ -134,6 +60,9 @@ export function Composer({ className }: { className?: string }) {
     }
   }
 
+  const ws = workspace(workspaceId);
+  const placeholder = choices.length === 0 ? (workspaceId ? t("noRepos") : t("needsRepo")) : ws ? t("placeholderWs", { name: ws.name }) : t("placeholder");
+
   return (
     <form onSubmit={submit} className={cn("relative", className)}>
       <div className="flex min-h-[42px] items-center gap-2.5 rounded-[11px] border border-[#232327] bg-panel py-1 pr-1.5 pl-3.5 focus-within:border-border-strong">
@@ -147,12 +76,37 @@ export function Composer({ className }: { className?: string }) {
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={onKeyDown}
-          disabled={!selectedRepo}
-          placeholder={selectedRepo ? t("placeholder") : t("needsRepo")}
+          disabled={choices.length === 0}
+          placeholder={placeholder}
           className="max-h-32 min-w-0 grow resize-none bg-transparent py-1.5 leading-6 outline-none placeholder:text-muted [field-sizing:content]"
         />
+        {choices.length > 0 && (
+          <label className="relative inline-flex h-[30px] shrink-0 items-center rounded-lg border border-border bg-panel-2 pr-7 pl-2.5 text-xs">
+            <span className="sr-only">{t("destination")}</span>
+            <select value={repoId} onChange={(e) => setRepoId(e.target.value)} className="appearance-none bg-transparent font-mono outline-none">
+              {workspaceId
+                ? choices.map((r) => (
+                    <option key={r.id} value={r.id} className="bg-panel">
+                      {r.name}
+                    </option>
+                  ))
+                : visibleWs.map((w) => (
+                    <optgroup key={w.id} label={w.name} className="bg-panel">
+                      {choices
+                        .filter((r) => r.workspaceId === w.id)
+                        .map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {w.name} / {r.name}
+                          </option>
+                        ))}
+                    </optgroup>
+                  ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2 size-3 text-muted" aria-hidden="true" />
+          </label>
+        )}
         {prompt.trim() ? (
-          <Button variant="primary" type="submit" disabled={busy} className="h-8">
+          <Button variant="primary" type="submit" disabled={busy || !repoId} className="h-8">
             {busy && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
             {t("start")}
           </Button>
@@ -165,27 +119,21 @@ export function Composer({ className }: { className?: string }) {
   );
 }
 
-export function TopBar() {
+export function RunningStats({ tasks }: { tasks: Task[] }) {
   const t = useTranslations("common");
   const locale = useLocale();
-  const { tasks } = useAppState();
   const running = tasks.filter((x) => isActive(x.status)).length;
   const today = new Date().toDateString();
   const costToday = tasks.filter((x) => new Date(x.createdAt).toDateString() === today).reduce((s, x) => s + x.costUsd, 0);
-
   return (
-    <header className="flex flex-wrap items-center gap-3.5 border-b border-border px-7 py-3.5">
-      <RepoSwitcher />
-      <Composer className="mx-auto min-w-[280px] max-w-[680px] grow basis-[380px]" />
-      <span className="flex items-center gap-2.5 text-[12.5px] text-muted">
-        {running > 0 && (
-          <span className="inline-flex h-[30px] items-center gap-1.5 rounded-full border border-info/35 px-2.5 text-info">
-            <span className="size-[7px] rounded-full bg-info" aria-hidden="true" />
-            {t("running", { count: running })}
-          </span>
-        )}
-        <span className="font-mono">{t("costToday", { cost: formatCost(costToday, locale) })}</span>
-      </span>
-    </header>
+    <span className="flex items-center gap-2.5 text-[12.5px] text-muted">
+      {running > 0 && (
+        <span className="inline-flex h-[30px] items-center gap-1.5 rounded-full border border-info/35 px-2.5 text-info">
+          <span className="size-[7px] rounded-full bg-info" aria-hidden="true" />
+          {t("running", { count: running })}
+        </span>
+      )}
+      <span className="font-mono">{t("costToday", { cost: formatCost(costToday, locale) })}</span>
+    </span>
   );
 }

@@ -1,39 +1,38 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
-import { useLocale, useTranslations } from "next-intl";
-import { Check, Loader2, Plus, Trash2 } from "lucide-react";
-import type { Agent, HouseRule, Personality, ProviderId } from "@forgeboard/shared";
+import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
+import { Check, Loader2, RotateCcw } from "lucide-react";
+import type { Agent, Personality, ProviderId } from "@forgeboard/shared";
 import { api } from "@/lib/api";
 import { useAppState } from "@/lib/app-state";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { Glyph } from "./glyph";
-import { Button, SectionLabel } from "./ui";
+import { RulesEditor } from "./rules-editor";
+import { Button, Chip, SectionLabel } from "./ui";
 
 const PERSONALITIES: Personality[] = ["mentor", "balanced", "strict"];
 
-function AgentCard({ agent }: { agent: Agent }) {
+/** Edits one agent: the default crew's, or a workspace's own when workspaceId is given. */
+export function AgentCard({ agent, workspaceId }: { agent: Agent; workspaceId?: string }) {
   const t = useTranslations("crew");
   const tc = useTranslations("common");
-  const { providers, refreshAgents } = useAppState();
+  const tws = useTranslations("wsSettings");
+  const { providers, refreshCrews, refreshWorkspaces } = useAppState();
   const [draft, setDraft] = useState(agent);
   const [state, setState] = useState<"idle" | "saving" | "saved">("idle");
   const [error, setError] = useState<string | null>(null);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(agent);
+  const dirty =
+    draft.name !== agent.name || draft.provider !== agent.provider || draft.personality !== agent.personality || draft.instructions !== agent.instructions;
 
   useEffect(() => setDraft(agent), [agent]);
 
-  async function save() {
+  async function run(action: () => Promise<unknown>) {
     setState("saving");
     setError(null);
     try {
-      await api.updateAgent(agent.id, {
-        name: draft.name,
-        provider: draft.provider,
-        personality: draft.personality,
-        instructions: draft.instructions,
-      });
-      await refreshAgents();
+      await action();
+      await Promise.all([refreshCrews(), refreshWorkspaces()]);
       setState("saved");
       setTimeout(() => setState("idle"), 1500);
     } catch (err) {
@@ -42,7 +41,13 @@ function AgentCard({ agent }: { agent: Agent }) {
     }
   }
 
-  const id = `agent-${agent.id}`;
+  const save = () =>
+    run(() =>
+      api.updateAgent(agent.id, { name: draft.name, provider: draft.provider, personality: draft.personality, instructions: draft.instructions }, workspaceId),
+    );
+  const reset = () => run(() => api.resetAgent(agent.id, workspaceId!));
+
+  const id = `agent-${workspaceId ?? "default"}-${agent.id}`;
   return (
     <article className={cn("flex flex-col gap-4 rounded-2xl border border-border bg-panel p-[18px]", agent.id === "hawk" && "border-info/25")}>
       <div className="flex items-center gap-3">
@@ -60,6 +65,7 @@ function AgentCard({ agent }: { agent: Agent }) {
           />
           <div className="px-1 text-[12.5px] text-muted">{agent.id === "forge" ? t("roleForge") : t("roleHawk")}</div>
         </div>
+        {workspaceId && agent.customized && <Chip tone="info">{t("customized")}</Chip>}
       </div>
 
       <div className="flex flex-col gap-2">
@@ -113,7 +119,13 @@ function AgentCard({ agent }: { agent: Agent }) {
       </div>
 
       {error && <p className="text-xs text-danger">{error}</p>}
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        {workspaceId && agent.customized && (
+          <Button variant="ghost" onClick={reset} disabled={state === "saving"}>
+            <RotateCcw className="size-3.5" aria-hidden="true" />
+            {tws("resetAgent")}
+          </Button>
+        )}
         <Button variant="primary" onClick={save} disabled={!dirty || state === "saving" || !draft.name.trim()}>
           {state === "saving" && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
           {state === "saved" && <Check className="size-3.5" aria-hidden="true" />}
@@ -124,123 +136,29 @@ function AgentCard({ agent }: { agent: Agent }) {
   );
 }
 
-function RulesPanel() {
-  const t = useTranslations("crew");
-  const locale = useLocale();
-  const { selectedRepo } = useAppState();
-  const [list, setList] = useState<HouseRule[]>([]);
-  const [text, setText] = useState("");
-
-  useEffect(() => {
-    if (!selectedRepo) return;
-    let alive = true;
-    const load = () => api.rules(selectedRepo.id).then((r) => alive && setList(r)).catch(() => {});
-    void load();
-    const id = setInterval(load, 4000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, [selectedRepo]);
-
-  if (!selectedRepo) return <p className="text-[13px] text-muted">{t("rulesNoRepo")}</p>;
-
-  async function add(e: FormEvent) {
-    e.preventDefault();
-    if (!selectedRepo || text.trim().length < 3) return;
-    const rule = await api.addRule(selectedRepo.id, text.trim());
-    setList((l) => [rule, ...l]);
-    setText("");
-  }
-
-  async function toggle(rule: HouseRule) {
-    const next = await api.updateRule(rule.id, { enabled: !rule.enabled });
-    setList((l) => l.map((r) => (r.id === rule.id ? next : r)));
-  }
-
-  async function remove(rule: HouseRule) {
-    await api.removeRule(rule.id);
-    setList((l) => l.filter((r) => r.id !== rule.id));
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="flex items-center gap-2 text-base font-semibold">
-          {t("rules")}
-          <span className="rounded-full border border-border bg-panel-2 px-2 font-mono text-[11.5px] font-normal text-muted">{selectedRepo.name}</span>
-        </h2>
-        <p className="mt-1 text-[13px] text-muted">{t("rulesSubtitle", { repo: selectedRepo.name })}</p>
-      </div>
-      <form onSubmit={add} className="flex gap-2">
-        <label htmlFor="new-rule" className="sr-only">
-          {t("addRule")}
-        </label>
-        <input
-          id="new-rule"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={t("addRule")}
-          className="h-[34px] min-w-0 grow rounded-lg border border-border bg-bg px-3 text-[13px] outline-none focus:border-border-strong"
-        />
-        <Button type="submit" disabled={text.trim().length < 3} aria-label={t("addRule")}>
-          <Plus className="size-4" aria-hidden="true" />
-        </Button>
-      </form>
-      {list.length === 0 ? (
-        <p className="text-[13px] text-muted">{t("noRules")}</p>
-      ) : (
-        <ul>
-          {list.map((rule) => (
-            <li key={rule.id} className="group flex items-start gap-3 border-t border-border py-3 first:border-t-0">
-              <button
-                type="button"
-                role="switch"
-                aria-checked={rule.enabled}
-                aria-label={t("toggleRule")}
-                onClick={() => toggle(rule)}
-                className={cn("relative mt-px h-[19px] w-8 shrink-0 rounded-full", rule.enabled ? "bg-accent" : "bg-[#2a313a]")}
-              >
-                <span className={cn("absolute top-0.5 size-[15px] rounded-full", rule.enabled ? "right-0.5 bg-bg" : "left-0.5 bg-muted")} />
-              </button>
-              <div className={cn("min-w-0 grow", !rule.enabled && "opacity-60")}>
-                <div className="text-[13.5px]">{rule.text}</div>
-                <div className="text-xs text-muted">{t("source", { source: rule.source, time: timeAgo(rule.createdAt, locale) })}</div>
-              </div>
-              <button
-                type="button"
-                onClick={() => remove(rule)}
-                aria-label={`${t("rules")}: ${rule.text}`}
-                className="grid size-7 shrink-0 place-items-center rounded-md text-muted opacity-0 group-hover:opacity-100 hover:text-danger focus:opacity-100"
-              >
-                <Trash2 className="size-3.5" aria-hidden="true" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
+/** The default crew and the general house rules, which apply everywhere. */
 export function CrewView() {
   const t = useTranslations("crew");
-  const { agents } = useAppState();
+  const { crews } = useAppState();
   return (
     <div className="flex grow flex-wrap">
       <main className="flex min-w-0 grow-[999] basis-[600px] flex-col gap-5 px-[30px] py-[26px]">
         <div>
           <h1 className="text-[22px] font-semibold tracking-[-0.01em]">{t("title")}</h1>
-          <p className="mt-1 text-[13.5px] text-muted">{t("subtitle")}</p>
+          <p className="mt-1 max-w-2xl text-[13.5px] text-muted">{t("subtitle")}</p>
         </div>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3.5">
-          {agents.map((a) => (
+          {(crews.default ?? []).map((a) => (
             <AgentCard key={a.id} agent={a} />
           ))}
         </div>
       </main>
-      <aside className="max-w-[440px] grow basis-[340px] border-l border-border bg-panel px-[22px] py-6">
-        <RulesPanel />
+      <aside className="max-w-[460px] grow basis-[340px] border-l border-border bg-panel px-[22px] py-6">
+        <div className="mb-4">
+          <h2 className="text-base font-semibold">{t("rules")}</h2>
+          <p className="mt-1 text-[13px] text-muted">{t("rulesSubtitle")}</p>
+        </div>
+        <RulesEditor scope="global" id={null} placeholder={t("addRule")} />
       </aside>
     </div>
   );

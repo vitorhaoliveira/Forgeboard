@@ -3,13 +3,16 @@ import {
   type Agent,
   type CheckCommand,
   type CreateTaskInput,
+  type CreateWorkspaceInput,
   type DiffFile,
   type HouseRule,
   type ProviderInfo,
   type Repo,
+  type RuleScope,
   type RuleSource,
   type RunEvent,
   type Task,
+  type Workspace,
 } from "@forgeboard/shared";
 
 export const API_URL = process.env.NEXT_PUBLIC_FORGEBOARD_API ?? `http://127.0.0.1:${DEFAULT_SERVER_PORT}`;
@@ -35,25 +38,37 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 const post = (body?: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body ?? {}) });
 const patch = (body: unknown): RequestInit => ({ method: "PATCH", body: JSON.stringify(body) });
+const del: RequestInit = { method: "DELETE" };
+const wsQuery = (workspaceId?: string) => (workspaceId ? `?workspaceId=${workspaceId}` : "");
 
 export const api = {
   providers: () => request<ProviderInfo[]>("/api/providers"),
 
-  repos: () => request<Repo[]>("/api/repos"),
-  addRepo: (path: string) => request<Repo>("/api/repos", post({ path })),
-  setChecks: (id: string, checks: CheckCommand[]) => request<Repo>(`/api/repos/${id}`, patch({ checks })),
-  removeRepo: (id: string) => request<void>(`/api/repos/${id}`, { method: "DELETE" }),
+  workspaces: () => request<Workspace[]>("/api/workspaces"),
+  createWorkspace: (input: CreateWorkspaceInput) => request<Workspace>("/api/workspaces", post(input)),
+  updateWorkspace: (id: string, data: Partial<Omit<Workspace, "id" | "createdAt">>) =>
+    request<Workspace>(`/api/workspaces/${id}`, patch(data)),
+  removeWorkspace: (id: string) => request<void>(`/api/workspaces/${id}`, del),
 
-  agents: () => request<Agent[]>("/api/agents"),
-  updateAgent: (id: string, data: Partial<Agent>) => request<Agent>(`/api/agents/${id}`, patch(data)),
+  repos: (workspaceId?: string) => request<Repo[]>(`/api/repos${wsQuery(workspaceId)}`),
+  addRepo: (workspaceId: string, path: string) => request<Repo>("/api/repos", post({ path, workspaceId })),
+  updateRepo: (id: string, data: { checks?: CheckCommand[]; workspaceId?: string }) => request<Repo>(`/api/repos/${id}`, patch(data)),
+  removeRepo: (id: string) => request<void>(`/api/repos/${id}`, del),
 
-  rules: (repoId: string) => request<HouseRule[]>(`/api/rules?repoId=${repoId}`),
-  addRule: (repoId: string, text: string, source: RuleSource = "you") =>
-    request<HouseRule>("/api/rules", post({ repoId, text, source })),
-  updateRule: (id: string, data: { enabled?: boolean; text?: string }) => request<HouseRule>(`/api/rules/${id}`, patch(data)),
-  removeRule: (id: string) => request<void>(`/api/rules/${id}`, { method: "DELETE" }),
+  /** Without a workspace: the default crew. With one: the crew that workspace uses. */
+  agents: (workspaceId?: string) => request<Agent[]>(`/api/agents${wsQuery(workspaceId)}`),
+  updateAgent: (id: string, data: Partial<Agent>, workspaceId?: string) =>
+    request<Agent>(`/api/agents/${id}${wsQuery(workspaceId)}`, patch(data)),
+  resetAgent: (id: string, workspaceId: string) => request<Agent>(`/api/agents/${id}${wsQuery(workspaceId)}`, del),
 
-  tasks: (repoId?: string) => request<Task[]>(`/api/tasks${repoId ? `?repoId=${repoId}` : ""}`),
+  rules: (scope: RuleScope, id?: string) => request<HouseRule[]>(`/api/rules?scope=${scope}${id ? `&id=${id}` : ""}`),
+  addRule: (scope: RuleScope, id: string | null, text: string, source: RuleSource = "you") =>
+    request<HouseRule>("/api/rules", post({ scope, id, text, source })),
+  updateRule: (id: string, data: { enabled?: boolean; text?: string; scope?: RuleScope; id?: string | null }) =>
+    request<HouseRule>(`/api/rules/${id}`, patch(data)),
+  removeRule: (id: string) => request<void>(`/api/rules/${id}`, del),
+
+  tasks: () => request<Task[]>("/api/tasks"),
   task: (id: string) => request<{ task: Task; events: RunEvent[] }>(`/api/tasks/${id}`),
   createTask: (input: CreateTaskInput) => request<Task>("/api/tasks", post(input)),
   diff: (id: string) => request<DiffFile[]>(`/api/tasks/${id}/diff`),

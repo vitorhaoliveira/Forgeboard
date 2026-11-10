@@ -7,19 +7,19 @@ import { useLocale, useTranslations } from "next-intl";
 import { GitMerge, Loader2 } from "lucide-react";
 import type { Task } from "@forgeboard/shared";
 import { api } from "@/lib/api";
-import { useAppState } from "@/lib/app-state";
+import { useAppState, WorkspaceScope } from "@/lib/app-state";
 import { cn, formatCost, timeAgo } from "@/lib/utils";
 import { Glyph } from "./glyph";
 import { StatusDot } from "./status-chip";
 import { Button, buttonClass, Chip } from "./ui";
 
 /** Answer an agent's question in one click, or in your own words. */
-export function QuestionCard({ task, compact }: { task: Task; compact?: boolean }) {
+export function QuestionCard({ task, compact, showRepo }: { task: Task; compact?: boolean; showRepo?: boolean }) {
   const t = useTranslations("question");
   const tc = useTranslations("common");
   const locale = useLocale();
   const router = useRouter();
-  const { agentName, refreshTasks } = useAppState();
+  const { agentName, refreshTasks, repo } = useAppState();
   const [custom, setCustom] = useState(false);
   const [text, setText] = useState("");
   const [remember, setRemember] = useState(true);
@@ -47,10 +47,12 @@ export function QuestionCard({ task, compact }: { task: Task; compact?: boolean 
   }
 
   return (
+    <WorkspaceScope workspaceId={task.workspaceId}>
     <article className="flex flex-col gap-3 rounded-2xl border border-accent/50 bg-panel p-[18px] shadow-[0_0_0_4px_rgba(249,115,22,.06)]">
       <div className="flex flex-wrap items-center gap-2.5">
         <Glyph actor="forge" />
-        <span className="text-xs font-medium text-accent">{t("title", { name: agentName("forge") })}</span>
+        <span className="text-xs font-medium text-accent">{t("title", { name: agentName("forge", task.workspaceId) })}</span>
+        {showRepo && <Chip className="h-[22px] font-mono">{repo(task.repoId)?.name ?? "—"}</Chip>}
         {!compact && (
           <span className="text-[12.5px] text-muted">
             · <Link href={`/runs/${task.id}`} className="hover:text-text">{task.title}</Link> · {t("waiting", { time: timeAgo(task.updatedAt, locale) })}
@@ -97,13 +99,14 @@ export function QuestionCard({ task, compact }: { task: Task; compact?: boolean 
       )}
       {error && <p className="text-xs text-danger">{error}</p>}
     </article>
+    </WorkspaceScope>
   );
 }
 
 /** Work that is done: merge straight away or look closer. */
-export function ReviewCard({ task }: { task: Task }) {
+export function ReviewCard({ task, showRepo }: { task: Task; showRepo?: boolean }) {
   const t = useTranslations("review");
-  const { agentName, refreshTasks } = useAppState();
+  const { agentName, refreshTasks, repo } = useAppState();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const v = task.verdict;
@@ -124,14 +127,16 @@ export function ReviewCard({ task }: { task: Task }) {
   }
 
   return (
+    <WorkspaceScope workspaceId={task.workspaceId}>
     <article className="flex flex-col gap-3 rounded-2xl border border-border bg-panel p-[18px]">
       <div className="flex flex-wrap items-center gap-2.5">
         <Glyph actor="hawk" />
         <span className={cn("text-xs font-medium", approved ? "text-success" : "text-warning")}>
           {approved ? t("ready") : t("concerns")}
         </span>
+        {showRepo && <Chip className="h-[22px] font-mono">{repo(task.repoId)?.name ?? "—"}</Chip>}
         <span className="text-[12.5px] text-muted">
-          · {t(approved ? "approvedBy" : "notApproved", { name: agentName("hawk"), count: task.round })}
+          · {t(approved ? "approvedBy" : "notApproved", { name: agentName("hawk", task.workspaceId), count: task.round })}
         </span>
         {v && (
           <Chip className="ml-auto" tone={v.risk === "low" ? "success" : v.risk === "high" ? "danger" : "warning"}>
@@ -165,6 +170,7 @@ export function ReviewCard({ task }: { task: Task }) {
       </div>
       {error && <p className="text-xs text-danger">{error}</p>}
     </article>
+    </WorkspaceScope>
   );
 }
 
