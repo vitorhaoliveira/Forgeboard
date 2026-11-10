@@ -1,53 +1,41 @@
 @import "tailwindcss";
 
-/* Design tokens. Dark is the default look for a dev tool; light follows the system. */
+/* Dark, minimal. One accent (orange) is reserved for things that need your attention. */
 :root {
-  --bg: #0b0d10;
-  --panel: #111418;
-  --panel-2: #171b21;
-  --border: #232931;
-  --text: #e6e9ee;
-  --muted: #8b95a3;
-  --accent: #f97316;
-  --accent-fg: #0b0d10;
-  --success: #22c55e;
-  --danger: #ef4444;
-  --warning: #eab308;
-  --info: #38bdf8;
+  --bg: #050506;
+  --panel: #0a0a0b;
+  --panel-2: #111113;
+  --glyph: #121214;
+  --border: #1c1c1f;
+  --border-strong: #2a2a2f;
+  --text: #ededef;
+  --muted: #88888e;
+  --accent: #ff7a1a;
+  --info: #7cc4ff;
+  --violet: #b9a6ff;
+  --success: #4ade80;
+  --danger: #ff7b7b;
+  --warning: #f2c94c;
+  --pink: #f472b6;
   color-scheme: dark;
-}
-
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --bg: #f7f7f8;
-    --panel: #ffffff;
-    --panel-2: #f1f2f4;
-    --border: #e2e4e8;
-    --text: #15181d;
-    --muted: #5f6875;
-    --accent: #ea580c;
-    --accent-fg: #ffffff;
-    --success: #16a34a;
-    --danger: #dc2626;
-    --warning: #ca8a04;
-    --info: #0284c7;
-    color-scheme: light;
-  }
 }
 
 @theme inline {
   --color-bg: var(--bg);
   --color-panel: var(--panel);
   --color-panel-2: var(--panel-2);
+  --color-glyph: var(--glyph);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-text: var(--text);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
-  --color-accent-fg: var(--accent-fg);
+  --color-info: var(--info);
+  --color-violet: var(--violet);
   --color-success: var(--success);
   --color-danger: var(--danger);
   --color-warning: var(--warning);
-  --color-info: var(--info);
+  --color-pink: var(--pink);
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
@@ -61,7 +49,18 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
+  font-size: 14px;
   -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(255, 122, 26, 0.3);
+}
+
+/* Faint dot grid behind flow graphs. */
+.dot-grid {
+  background-image: radial-gradient(#111114 1px, transparent 1px);
+  background-size: 20px 20px;
 }
 
 /* Markdown written by agents. */
@@ -70,7 +69,7 @@ body {
 }
 .md code {
   font-family: var(--font-mono);
-  font-size: 0.85em;
+  font-size: 0.86em;
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -79,7 +78,7 @@ body {
 .md pre {
   background: var(--panel-2);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 0.75em;
   overflow-x: auto;
 }

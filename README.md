@@ -1,46 +1,56 @@
 # Forgeboard
 
-**Local cockpit for AI coding agents.** Describe a task, watch the agent work in real time, and review what it did, all from your browser while everything runs on your machine.
+**Your crew of AI coding agents, on your machine.** Describe a task; Forge builds it, the checks run, Hawk reviews it and sends it back until it's right. Agents ask you when they need a decision. You merge when you're happy.
 
-> Status: **v0, foundation**. One agent, live streaming, run history. Next up (v1): Builder + Reviewer agents talking to each other, git worktrees and a diff review step.
+![Desk](docs/screenshots/desk.png)
+
+> Status: **v1**. Built-in "Build & Review" flow, live run view, merge decision, editable crew and house rules, English (US) and Brazilian Portuguese. Next up (v2): design your own flows with drag-and-drop blocks.
 
 ## How it works
 
 ```
-┌──────────────── your machine ────────────────┐
-│  Browser (Next.js UI)  ←── SSE ───┐          │
-│                                    │          │
-│  Local server (Node + Hono) ───────┘          │
-│   ├─ Runner: starts, streams and stops runs   │
-│   ├─ Providers: Claude Code CLI · Mock        │
-│   └─ SQLite (~/.forgeboard/forgeboard.db)     │
-└───────────────────────────────────────────────┘
+your task → Forge (builds) → Checks (tests · lint · types) → Hawk (reviews)
+                 ↑                                              │
+                 └──────── changes requested (up to N rounds) ──┘
+                                                                ↓
+                                              You: merge · send back · discard
 ```
 
-- **No API key needed.** The Claude Code provider drives the `claude` CLI you already have, using its existing login.
-- **Every provider is normalized** into the same event stream (`text`, `tool_use`, `tool_result`, `result`, `error`), so the UI doesn't care which agent is running.
-- **Resumable streams.** Events are stored, and the SSE endpoint replays from `Last-Event-ID`, so reloading the page mid-run loses nothing.
-- **Local only.** The server listens on `127.0.0.1` and only accepts requests from the web UI's origin.
+- **Every task runs in its own git worktree** (`~/.forgeboard/worktrees/<task>`), on a branch like `fb/add-pagination-ab12c`. Your checkout is never touched until you merge.
+- **Checks are objective.** Forgeboard runs your repo's own commands (detected from `package.json`, editable in Settings) after every build. Hawk can't approve while a check fails.
+- **Agents ask instead of guessing.** When Forge needs a product decision it pauses the run; the question shows up on your Desk with one-click answers. Its session is resumed with your answer.
+- **The crew learns.** Answers can be saved as **house rules**, and Hawk suggests rules from what it sees in reviews. Every agent follows them on every task.
+- **You stay in charge.** The merge screen leads with what changed, how we know it works and the risk; then the diff, where you can leave files out.
+
+![Run](docs/screenshots/run.png)
+
+![Decision](docs/screenshots/decide.png)
 
 ## Getting started
 
-Requirements: Node 22.13+, pnpm, and optionally [Claude Code](https://docs.claude.com/en/docs/claude-code) logged in.
+Requirements: Node 22.13+, pnpm, git, and [Claude Code](https://docs.claude.com/en/docs/claude-code) logged in (subscription or API key — Forgeboard never sees it).
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-Open http://localhost:3000, add a repository folder in the sidebar and run a task.
+Open http://localhost:3000, add a repository (any git repo with at least one commit), and type a task in the top bar.
 
-No Claude Code? Pick **Mock** in the agent selector to see a scripted run without spending tokens.
+**Try it without spending tokens:** in **Crew**, set both agents to **Mock (no AI)**. The scripted crew asks a question, gets a review rejected, fixes it and gets approved — with real file changes, so merging works too.
 
-### Permission modes
+### What agents may do
 
-| Mode | What the agent can do |
-|---|---|
-| **Read only** | Explore the code and answer or propose a plan. No files change. |
-| **Can edit files** | Edit files directly in the repository. Commit your work first. (v1 moves this into an isolated git worktree.) |
+| Agent | Files | Commands |
+|---|---|---|
+| **Forge** (builder) | edits files in the task's worktree | package managers (`npm`, `pnpm`, `yarn`, `bun`, `npx`, `node`) and read-only git/`ls`; anything else is refused |
+| **Hawk** (reviewer) | read only | none; it gets the check results from Forgeboard |
+
+Agents never commit, push or touch your branch. Merging is always your click.
+
+### Languages
+
+The UI follows your browser language on first visit (English or Português) and can be switched with the **EN / PT** button in the sidebar. Agents write their messages in the same language as the UI.
 
 ### Configuration
 
@@ -50,24 +60,26 @@ No Claude Code? Pick **Mock** in the agent selector to see a scripted run withou
 | `FORGEBOARD_DATA_DIR` | `~/.forgeboard` |
 | `FORGEBOARD_WEB_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` |
 | `FORGEBOARD_CLAUDE_BIN` | `claude` |
+| `FORGEBOARD_CHECK_TIMEOUT_MS` | `300000` |
 | `NEXT_PUBLIC_FORGEBOARD_API` | `http://127.0.0.1:4317` |
 
 ## Project structure
 
 ```
 apps/
-  server/   Local API: tasks, SSE streaming, providers, SQLite
-  web/      Next.js UI
+  server/   Local API (Hono + SQLite): orchestrator, git worktrees, checks, providers, SSE
+  web/      Next.js UI (next-intl, Tailwind): Desk, Run, Decide, Crew, Settings
 packages/
-  shared/   Types shared by server and web (RunEvent, Task…)
+  shared/   Types shared by server and web (Task, RunEvent, Verdict…)
 ```
+
+Key server files: `orchestrator.ts` (the Build & Review loop), `prompts.ts` (what each agent is told and how its answer is parsed), `git.ts` (worktrees, diff, merge), `checks.ts`.
 
 ## Roadmap
 
 - [x] **v0 — Foundation**: run a task, live stream, cancel, history
-- [ ] **v1 — Builder + Reviewer**: agents in a loop, git worktree per task, diff review (approve / request changes / discard)
-- [ ] **v1.5 — Public demo**: record runs and replay them in a hosted demo
-- [ ] **v2 — Lead & planning**: task breakdown, plan approval, graph view, human intervention
-- [ ] **v3 — Parallel & providers**: kanban, parallel runs, Codex CLI, API keys, cost dashboard
-- [ ] **v4 — Routines**: reusable task templates, scheduling, custom agent roles
-- [ ] **v5 — Polish**: command palette, embedded terminal, accessibility, tests
+- [x] **v1 — Crew & review**: Build & Review loop, worktrees, checks, agent questions, merge decision, house rules, EN/PT
+- [ ] **v1.5 — Public demo**: replay recorded runs in a hosted demo
+- [ ] **v2 — Flow studio**: build your own flows (agents, checks, "ask me" gates, loops, parallel steps), custom agents
+- [ ] **v3 — More agents**: Codex CLI and API-key providers, parallel runs, cost dashboard
+- [ ] **v4 — Routines**: scheduled and reusable tasks

@@ -1,13 +1,20 @@
 import {
   DEFAULT_SERVER_PORT,
+  type Agent,
+  type CheckCommand,
   type CreateTaskInput,
+  type DiffFile,
+  type HouseRule,
   type ProviderInfo,
   type Repo,
+  type RuleSource,
   type RunEvent,
   type Task,
 } from "@forgeboard/shared";
 
 export const API_URL = process.env.NEXT_PUBLIC_FORGEBOARD_API ?? `http://127.0.0.1:${DEFAULT_SERVER_PORT}`;
+
+export class ServerDownError extends Error {}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
@@ -17,7 +24,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       headers: { "Content-Type": "application/json", ...init?.headers },
     });
   } catch {
-    throw new Error(`Can't reach the Forgeboard server at ${API_URL}. Is it running?`);
+    throw new ServerDownError(API_URL);
   }
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -26,14 +33,34 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
+const post = (body?: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body ?? {}) });
+const patch = (body: unknown): RequestInit => ({ method: "PATCH", body: JSON.stringify(body) });
+
 export const api = {
   providers: () => request<ProviderInfo[]>("/api/providers"),
+
   repos: () => request<Repo[]>("/api/repos"),
-  addRepo: (path: string) => request<Repo>("/api/repos", { method: "POST", body: JSON.stringify({ path }) }),
+  addRepo: (path: string) => request<Repo>("/api/repos", post({ path })),
+  setChecks: (id: string, checks: CheckCommand[]) => request<Repo>(`/api/repos/${id}`, patch({ checks })),
+  removeRepo: (id: string) => request<void>(`/api/repos/${id}`, { method: "DELETE" }),
+
+  agents: () => request<Agent[]>("/api/agents"),
+  updateAgent: (id: string, data: Partial<Agent>) => request<Agent>(`/api/agents/${id}`, patch(data)),
+
+  rules: (repoId: string) => request<HouseRule[]>(`/api/rules?repoId=${repoId}`),
+  addRule: (repoId: string, text: string, source: RuleSource = "you") =>
+    request<HouseRule>("/api/rules", post({ repoId, text, source })),
+  updateRule: (id: string, data: { enabled?: boolean; text?: string }) => request<HouseRule>(`/api/rules/${id}`, patch(data)),
+  removeRule: (id: string) => request<void>(`/api/rules/${id}`, { method: "DELETE" }),
+
   tasks: (repoId?: string) => request<Task[]>(`/api/tasks${repoId ? `?repoId=${repoId}` : ""}`),
   task: (id: string) => request<{ task: Task; events: RunEvent[] }>(`/api/tasks/${id}`),
-  createTask: (input: CreateTaskInput) =>
-    request<Task>("/api/tasks", { method: "POST", body: JSON.stringify(input) }),
-  cancelTask: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/cancel`, { method: "POST" }),
+  createTask: (input: CreateTaskInput) => request<Task>("/api/tasks", post(input)),
+  diff: (id: string) => request<DiffFile[]>(`/api/tasks/${id}/diff`),
+  answer: (id: string, text: string, remember: boolean) => request<Task>(`/api/tasks/${id}/answer`, post({ text, remember })),
+  sendBack: (id: string, notes: string) => request<Task>(`/api/tasks/${id}/send-back`, post({ notes })),
+  merge: (id: string, exclude: string[] = []) => request<Task>(`/api/tasks/${id}/merge`, post({ exclude })),
+  discard: (id: string) => request<Task>(`/api/tasks/${id}/discard`, post()),
+  stop: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/stop`, post()),
   streamUrl: (id: string, after: number) => `${API_URL}/api/tasks/${id}/stream?after=${after}`,
 };

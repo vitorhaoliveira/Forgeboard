@@ -1,25 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { isTerminalStatus, type RunEvent, type Task } from "@forgeboard/shared";
+import { useCallback, useEffect, useState } from "react";
+import { isFinished, type RunEvent, type Task } from "@forgeboard/shared";
 import { api } from "./api";
 
 /**
- * Loads a task with its stored events, then follows new events over SSE
- * until the server signals the end of the run.
+ * Loads a task with its stored events, then follows new events over SSE.
+ * The task is re-fetched whenever its status changes so every field stays exact.
  */
 export function useTaskStream(taskId: string) {
   const [task, setTask] = useState<Task | null>(null);
   const [events, setEvents] = useState<RunEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  /** Call after an action (answer, send back…) restarts a finished stream. */
+  const reload = useCallback(() => setReloadKey((k) => k + 1), []);
 
   useEffect(() => {
     let cancelled = false;
     let source: EventSource | null = null;
 
-    setTask(null);
-    setEvents([]);
-    setError(null);
+    const refetchTask = () =>
+      api
+        .task(taskId)
+        .then((r) => !cancelled && setTask(r.task))
+        .catch(() => {});
 
     api
       .task(taskId)
@@ -27,27 +33,20 @@ export function useTaskStream(taskId: string) {
         if (cancelled) return;
         setTask(loaded);
         setEvents(stored);
-        if (isTerminalStatus(loaded.status)) return;
+        setError(null);
+        if (isFinished(loaded.status)) return;
 
         source = new EventSource(api.streamUrl(taskId, stored.at(-1)?.seq ?? 0));
-
         source.addEventListener("run", (msg) => {
           const event = JSON.parse((msg as MessageEvent<string>).data) as RunEvent;
           setEvents((prev) => (prev.some((e) => e.seq === event.seq) ? prev : [...prev, event]));
-          if (event.type === "status") {
-            setTask((t) => (t ? { ...t, status: event.status } : t));
-          } else if (event.type === "result") {
-            setTask((t) => (t ? { ...t, costUsd: event.costUsd, durationMs: event.durationMs } : t));
+          if (event.type === "status" || event.type === "verdict" || event.type === "round" || event.type === "question") {
+            void refetchTask();
           }
         });
-
         source.addEventListener("end", () => {
           source?.close();
-          // Pick up final fields (finishedAt, cost) written by the server.
-          api
-            .task(taskId)
-            .then((r) => !cancelled && setTask(r.task))
-            .catch(() => {});
+          void refetchTask();
         });
       })
       .catch((err: unknown) => {
@@ -58,7 +57,7 @@ export function useTaskStream(taskId: string) {
       cancelled = true;
       source?.close();
     };
-  }, [taskId]);
+  }, [taskId, reloadKey]);
 
-  return { task, events, error };
+  return { task, events, error, reload };
 }
