@@ -2,7 +2,9 @@
 
 **Your crew of AI coding agents, on your machine.** Describe a task; Forge builds it, the checks run, Hawk reviews it and sends it back until it's right. Agents ask you when they need a decision. You merge when you're happy.
 
-![Desk](docs/screenshots/desk.png)
+![Forgeboard demo: answer the agent's question, watch the crew build, check and review, then merge](docs/demo.gif)
+
+<sub>The demo above runs in the browser with a simulated crew (`pnpm demo`). See [Live demo](#live-demo).</sub>
 
 > Status: **v1.5**. Public demo mode, Workspaces per project, built-in "Build & Review" flow, live run view, merge decision, editable crew and house rules, English (US) and Brazilian Portuguese. Next up (v2): design your own flows with drag-and-drop blocks.
 
@@ -22,6 +24,8 @@ your task → Forge (builds) → Checks (tests · lint · types) → Hawk (revie
 - **The crew learns.** Answers can be saved as **house rules**, and Hawk suggests rules from what it sees in reviews. Every agent follows them on every task.
 - **One workspace per project.** Group a project's repositories in a workspace with its own crew and house rules (general → workspace → repository). The "All" desk shows what needs you across every workspace.
 - **You stay in charge.** The merge screen leads with what changed, how we know it works and the risk; then the diff, where you can leave files out.
+
+![Desk](docs/screenshots/desk.png)
 
 ![All workspaces](docs/screenshots/workspaces.png)
 
