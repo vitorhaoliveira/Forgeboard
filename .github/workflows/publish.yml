@@ -31,9 +31,20 @@ jobs:
           if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
             echo "Tag $GITHUB_REF_NAME doesn't match packages/cli/package.json ($VERSION)"; exit 1
           fi
-      - run: pnpm typecheck
-      - run: pnpm --filter forgeboard build
+      - name: Skip if this version is already on npm
+        id: exists
+        run: |
+          VERSION=$(node -p "require('./packages/cli/package.json').version")
+          if npm view "forgeboard@$VERSION" version > /dev/null 2>&1; then
+            echo "forgeboard@$VERSION is already published; nothing to do."
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.exists.outputs.published != 'true'
+        run: pnpm typecheck
+      - if: steps.exists.outputs.published != 'true'
+        run: pnpm --filter forgeboard build
       - name: Publish
+        if: steps.exists.outputs.published != 'true'
         working-directory: packages/cli
         # Trusted Publishing also adds provenance automatically.
         run: npm publish --access public
