@@ -2,6 +2,22 @@
 
 All notable changes to Forgeboard are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.6.0] — 2026-11-10
+
+Rich questions: agents ask with small forms and editable plans, rendered with [A2UI](https://a2ui.org/).
+
+### Added
+
+- **Questions with a form.** When Forge needs several decisions at once it sends one form instead of a chain of questions: single choice (with a suggested option), multiple choice, yes/no, and short text. Answer everything in one go and the run continues with the data.
+- **Editable plan before building.** For tasks that touch several files or layers, Forge proposes a plan first. Uncheck, reorder (drag, or Alt+↑/↓), rewrite or add steps, leave a note, then approve, or ask for another plan. Small tasks still start right away.
+- **Forgeboard's A2UI catalog** (`packages/shared/src/a2ui.ts`): the only components an agent can use (Column, Text, Choice, MultiChoice, Toggle, TextInput, StepList, Submit). The agent describes a form in a compact JSON; the server compiles it to A2UI v0.9 messages and validates them in strict mode. Anything outside the catalog is rejected and the question falls back to the text format. The browser renders the catalog with Forgeboard's own React components and validates again. No agent code runs in the browser.
+- Form answers show as chips in the activity feed, with the note if there is one. "Remember as house rules" saves one rule per decision; plans are never saved as rules.
+- The mock crew and the public demo ask with a form (pagination decisions) and an editable plan (user settings page).
+
+### Changed
+
+- `POST /api/tasks/:id/answer` accepts `data` (checked against the form the agent sent), `note` and `replan`.
+
 ## [1.5.0] — 2026-11-10
 
 Public demo: try Forgeboard in the browser without installing anything.

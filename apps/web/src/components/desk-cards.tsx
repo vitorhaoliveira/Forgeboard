@@ -1,17 +1,25 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useCallback, useState, type FormEvent, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { GitMerge, Loader2 } from "lucide-react";
-import type { Task } from "@forgeboard/shared";
+import type { FormAnswer, Task } from "@forgeboard/shared";
+import { summarizeAnswer } from "@forgeboard/shared/a2ui";
 import { api } from "@/lib/api";
 import { useAppState, WorkspaceScope } from "@/lib/app-state";
 import { cn, formatCost, timeAgo } from "@/lib/utils";
 import { Glyph } from "./glyph";
 import { StatusDot } from "./status-chip";
 import { Button, buttonClass, Chip } from "./ui";
+
+// A2UI renders in the browser only.
+const AgentFormView = dynamic(() => import("./agent-form"), {
+  ssr: false,
+  loading: () => <div className="h-24 animate-pulse rounded-xl bg-panel-2" />,
+});
 
 /** Answer an agent's question in one click, or in your own words. */
 export function QuestionCard({ task, compact, showRepo }: { task: Task; compact?: boolean; showRepo?: boolean }) {
@@ -25,14 +33,65 @@ export function QuestionCard({ task, compact, showRepo }: { task: Task; compact?
   const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const tf = useTranslations("form");
   const q = task.question;
+  const form = q?.form && q.ui ? q.form : null;
+  const isPlan = form?.kind === "plan";
+
+  const footer = useCallback(
+    (primary: ReactNode) =>
+      isPlan ? (
+        <div className="flex flex-wrap items-center gap-2.5">
+          <label htmlFor={`note-${task.id}`} className="sr-only">
+            {tf("noteLabel", { name: agentName("forge", task.workspaceId) })}
+          </label>
+          <input
+            id={`note-${task.id}`}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={tf("notePlaceholder", { name: agentName("forge", task.workspaceId) })}
+            className="h-9 min-w-0 flex-[1_1_260px] rounded-lg border border-border bg-bg px-3 text-[13px] outline-none focus:border-border-strong"
+          />
+          <Button className="h-9" disabled={busy} onClick={() => void answer(tf("replanText"), { replan: true, note: note.trim() || undefined })}>
+            {tf("replan")}
+          </Button>
+          {primary}
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2.5">
+          {primary}
+          {!custom && (
+            <Button className="h-9" onClick={() => setCustom(true)} disabled={busy}>
+              {t("ownWords")}
+            </Button>
+          )}
+          <label className="ml-auto inline-flex items-center gap-2 text-[12.5px] text-muted">
+            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="accent-accent" />
+            {tf("rememberMany")}
+          </label>
+        </div>
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isPlan, note, busy, custom, remember, task.id, task.workspaceId],
+  );
+
   if (!q) return null;
 
-  async function answer(value: string) {
+  function submitForm(data: FormAnswer) {
+    if (!form) return;
+    const summary = summarizeAnswer(form, data, tf("yes"), tf("no"));
+    const plan = form.fields.find((f) => f.type === "steps");
+    const count = plan ? ((data[plan.id] as { included?: boolean }[] | undefined) ?? []).filter((s) => s.included !== false).length : 0;
+    const text = isPlan ? tf("planApproved", { count }) : summary;
+    void answer(text, { data, note: note.trim() || undefined });
+  }
+
+  async function answer(value: string, extra?: { data?: FormAnswer; note?: string; replan?: boolean }) {
     setBusy(true);
     setError(null);
     try {
-      await api.answer(task.id, value, remember);
+      await api.answer(task.id, value, isPlan ? false : remember, extra);
       void refreshTasks();
       router.push(`/runs/${task.id}`);
     } catch (err) {
@@ -51,7 +110,13 @@ export function QuestionCard({ task, compact, showRepo }: { task: Task; compact?
     <article className="flex flex-col gap-3 rounded-2xl border border-accent/50 bg-panel p-[18px] shadow-[0_0_0_4px_rgba(249,115,22,.06)]">
       <div className="flex flex-wrap items-center gap-2.5">
         <Glyph actor="forge" />
-        <span className="text-xs font-medium text-accent">{t("title", { name: agentName("forge", task.workspaceId) })}</span>
+        <span className="text-xs font-medium text-accent">
+          {form
+            ? isPlan
+              ? tf("planTitle", { name: agentName("forge", task.workspaceId) })
+              : tf("formTitle", { name: agentName("forge", task.workspaceId), count: form.fields.length })
+            : t("title", { name: agentName("forge", task.workspaceId) })}
+        </span>
         {showRepo && <Chip className="h-[22px] font-mono">{repo(task.repoId)?.name ?? "—"}</Chip>}
         {!compact && (
           <span className="text-[12.5px] text-muted">
@@ -60,6 +125,12 @@ export function QuestionCard({ task, compact, showRepo }: { task: Task; compact?
         )}
       </div>
       <h2 className="text-[17px] font-semibold">{q.question}</h2>
+      {form ? (
+        <div className="pt-2">
+          <AgentFormView form={form} ui={q.ui!} busy={busy} onSubmit={submitForm} footer={footer} />
+        </div>
+      ) : (
+        <>
       {q.context && <p className="text-[13.5px] text-muted">{q.context}</p>}
       <div className="flex flex-wrap items-center gap-2">
         {q.options.map((option, i) => (
@@ -78,6 +149,8 @@ export function QuestionCard({ task, compact, showRepo }: { task: Task; compact?
           {t("remember")}
         </label>
       </div>
+        </>
+      )}
       {custom && (
         <form onSubmit={submitCustom} className="flex gap-2">
           <label htmlFor={`answer-${task.id}`} className="sr-only">

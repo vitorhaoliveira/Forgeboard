@@ -379,8 +379,18 @@ app.get("/api/tasks/:id/diff", async (c) => {
 
 app.post("/api/tasks/:id/answer", async (c) => {
   const task = mustGetTask(c.req.param("id"));
-  const { text, remember } = await body(c, z.object({ text: z.string().trim().min(1).max(2_000), remember: z.boolean().default(false) }));
-  answerQuestion(task.id, text, remember);
+  const { text, remember, data, note, replan } = await body(
+    c,
+    z.object({
+      text: z.string().trim().min(1).max(2_000),
+      remember: z.boolean().default(false),
+      // Answers to a form. The orchestrator checks them against the form the agent sent.
+      data: z.record(z.string(), z.unknown()).optional(),
+      note: z.string().trim().max(1_000).optional(),
+      replan: z.boolean().optional(),
+    }),
+  );
+  answerQuestion(task.id, text, remember, data, { note: note || undefined, replan });
   return c.json(tasks.get(task.id));
 });
 

@@ -4,12 +4,17 @@
   "version": "0.0.1",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./a2ui": "./src/a2ui.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@a2ui/web_core": "0.15.0",
+    "zod": "^3.25.76"
   }
 }

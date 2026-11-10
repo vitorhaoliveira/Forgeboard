@@ -124,12 +124,51 @@ export interface Verdict {
   suggestedRule?: string;
 }
 
+export type FormFieldType = "choice" | "multi" | "toggle" | "text" | "steps";
+
+export interface PlanStep {
+  text: string;
+  estimate?: string;
+  included?: boolean;
+}
+
+/** One input of a form an agent asks the user to fill. */
+export interface FormField {
+  id: string;
+  type: FormFieldType;
+  label: string;
+  hint?: string;
+  options?: string[];
+  /** For "choice": index of the option the agent recommends. */
+  suggested?: number;
+  value?: string | boolean | string[] | PlanStep[];
+  mono?: boolean;
+}
+
+/**
+ * A form an agent wants answered: several questions at once, or a plan to approve.
+ * The server compiles it to A2UI messages for the browser to render.
+ */
+export interface AgentForm {
+  kind: "questions" | "plan";
+  title: string;
+  context?: string;
+  fields: FormField[];
+  submitLabel?: string;
+}
+
+export type FormAnswer = Record<string, string | boolean | string[] | PlanStep[]>;
+
 export interface AgentQuestion {
   question: string;
   context?: string;
   options: string[];
   /** Index into options. */
   suggested?: number;
+  /** Present when the agent asked with a form. */
+  form?: AgentForm;
+  /** The form compiled to A2UI v0.9 messages, validated against Forgeboard's catalog. */
+  ui?: unknown[];
 }
 
 export interface Task {
@@ -168,7 +207,7 @@ export type RunEventPayload =
   | WithActor<{ type: "checks"; results: CheckResult[] }>
   | WithActor<{ type: "verdict"; verdict: Verdict; round: number }>
   | WithActor<{ type: "question"; question: AgentQuestion }>
-  | WithActor<{ type: "answer"; text: string; remember: boolean }>
+  | WithActor<{ type: "answer"; text: string; remember: boolean; data?: FormAnswer; note?: string; replan?: boolean }>
   | WithActor<{ type: "handoff"; to: Actor; label: string }>
   | WithActor<{ type: "step_done"; summary: string; costUsd: number | null; durationMs: number | null }>
   | WithActor<{ type: "merged"; branch: string }>

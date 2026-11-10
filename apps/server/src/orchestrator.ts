@@ -1,8 +1,13 @@
 import { join } from "node:path";
 import { nanoid } from "nanoid";
+import { compileForm, sanitizeAnswer, validateUi } from "@forgeboard/shared/a2ui";
 import type {
   Actor,
+  AgentForm,
+  AgentQuestion,
   CheckResult,
+  FormAnswer,
+  Locale,
   FlowNode,
   NodeState,
   RunEventPayload,
@@ -21,6 +26,7 @@ import {
   forgeNotesPrompt,
   forgeStartPrompt,
   hawkPrompt,
+  parseForm,
   parseQuestion,
   parseVerdict,
 } from "./prompts.js";
@@ -88,7 +94,28 @@ function activityEmitter(taskId: string, actor: Actor) {
 
 // ---------- Steps ----------
 
-type ForgeMode = { kind: "start" } | { kind: "answer"; answer: string } | { kind: "fix" } | { kind: "notes"; notes: string };
+type ForgeMode =
+  | { kind: "start" }
+  | { kind: "answer"; answer: string; form?: AgentForm; data?: FormAnswer; note?: string; replan?: boolean }
+  | { kind: "fix" } | { kind: "notes"; notes: string };
+
+/**
+ * Turns a form in Forge's message into a question with A2UI messages. Returns null
+ * when there is no form, or when it doesn't pass the catalog (then the text question, if any, is used).
+ */
+function formQuestion(taskId: string, text: string, locale: Locale): AgentQuestion | null {
+  const form = parseForm(text);
+  if (!form) return null;
+  try {
+    const submit = locale === "pt-BR" ? (form.kind === "plan" ? "Aprovar e começar" : "Enviar respostas") : form.kind === "plan" ? "Approve and start" : "Send answers";
+    const ui = compileForm(form, `q-${taskId}-${nanoid(6)}`, submit);
+    validateUi(ui);
+    return { question: form.title, context: form.context, options: [], form, ui };
+  } catch (err) {
+    console.warn(`[forgeboard] form rejected for ${taskId}:`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
 
 /** Runs Forge once. Returns "question" when Forge paused to ask the user something. */
 async function forgeStep(taskId: string, mode: ForgeMode, signal: AbortSignal): Promise<"question" | "done"> {
@@ -102,7 +129,7 @@ async function forgeStep(taskId: string, mode: ForgeMode, signal: AbortSignal): 
     mode.kind === "start"
       ? forgeStartPrompt(agent, task, repoRules)
       : mode.kind === "answer"
-        ? forgeAnswerPrompt(mode.answer)
+        ? forgeAnswerPrompt(mode.answer, mode.form, mode.data, mode)
         : mode.kind === "fix"
           ? forgeFixPrompt(task)
           : forgeNotesPrompt(mode.notes);
@@ -124,7 +151,7 @@ async function forgeStep(taskId: string, mode: ForgeMode, signal: AbortSignal): 
   taskState.set(taskId, { forgeSession: output.sessionId ?? undefined });
   addCost(taskId, output.costUsd);
 
-  const question = parseQuestion(output.text);
+  const question = formQuestion(taskId, output.text, task.locale) ?? parseQuestion(output.text);
   if (question) {
     // The provider already streamed the message itself; the UI hides the marker line.
     emit(taskId, { type: "question", actor: "forge", question });
@@ -276,26 +303,48 @@ export function startTask(taskId: string): void {
   });
 }
 
-export function answerQuestion(taskId: string, answer: string, remember: boolean): void {
+export function answerQuestion(
+  taskId: string,
+  answer: string,
+  remember: boolean,
+  rawData?: unknown,
+  extra: { note?: string; replan?: boolean } = {},
+): void {
   const task = tasks.get(taskId);
   if (!task || task.status !== "waiting" || !task.question) throw new FlowError("This task isn't waiting for an answer.");
+  const form = task.question.form;
+  const replan = Boolean(form && extra.replan);
+  const data = form && !replan ? sanitizeAnswer(form, rawData) : undefined;
 
-  emit(taskId, { type: "answer", actor: "you", text: answer, remember });
-  if (remember) {
-    rules.save({
-      id: nanoid(10),
-      scope: "repo",
-      workspaceId: null,
-      repoId: task.repoId,
-      text: `${task.question.question} → ${answer}`,
-      enabled: true,
-      source: "answer",
-      createdAt: new Date().toISOString(),
-    });
+  emit(taskId, { type: "answer", actor: "you", text: answer, remember, ...(data ? { data } : {}), ...(extra.note ? { note: extra.note } : {}), ...(replan ? { replan } : {}) });
+  if (remember && !replan) {
+    // A form becomes one rule per decision; plans are specific to this task, so they're never remembered.
+    const texts = form
+      ? form.fields
+          .filter((f) => f.type !== "steps")
+          .map((f) => {
+            const v = data![f.id];
+            const shown = typeof v === "boolean" ? (v ? (task.locale === "pt-BR" ? "sim" : "yes") : task.locale === "pt-BR" ? "não" : "no") : Array.isArray(v) ? (v as string[]).join(", ") : String(v);
+            return shown ? `${f.label} → ${shown}` : "";
+          })
+          .filter(Boolean)
+      : [`${task.question.question} → ${answer}`];
+    for (const text of texts) {
+      rules.save({
+        id: nanoid(10),
+        scope: "repo",
+        workspaceId: null,
+        repoId: task.repoId,
+        text,
+        enabled: true,
+        source: "answer",
+        createdAt: new Date().toISOString(),
+      });
+    }
   }
   node(taskId, "you", "done");
   setStatus(taskId, "running", { question: null });
-  drive(taskId, (signal) => loop(taskId, { kind: "answer", answer }, signal));
+  drive(taskId, (signal) => loop(taskId, { kind: "answer", answer, form, data, note: extra.note, replan }, signal));
 }
 
 export function sendBack(taskId: string, notes: string): void {
