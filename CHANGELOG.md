@@ -12,7 +12,7 @@ One-command install: `npx forgeboard`.
 - Friendly start-up checks: Node 22.13+ is required (built-in SQLite), a clear message when the port is taken, and a hint when Claude Code isn't installed (the Mock crew still works).
 - The package ships a trimmed Next.js standalone build with its runtime packages included: about 4.4 MB to download, no dependencies to install.
 - **CI** on every pull request and on `main`: typecheck, build the package and smoke-test the installed command.
-- **Publish workflow**: pushing a `v*` tag publishes to npm with provenance, after checking the tag matches the package version.
+- **Publish workflow**: pushing a `v*` tag publishes to npm through Trusted Publishing (no token, with provenance), after checking the tag matches the package version.
 - MIT license.
 
 ### Changed

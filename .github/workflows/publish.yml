@@ -5,9 +5,11 @@ on:
   push:
     tags: ["v*"]
 
+# Uses npm Trusted Publishing: no token. Configure it once on npmjs.com
+# (package → Settings → Trusted Publisher → GitHub Actions → this repo, publish.yml).
 permissions:
   contents: read
-  id-token: write # npm provenance
+  id-token: write
 
 jobs:
   publish:
@@ -21,6 +23,8 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
+      # Trusted Publishing needs npm 11.5.1 or newer; Node 22 ships npm 10.
+      - run: npm install -g npm@latest
       - name: Check the tag matches the package version
         run: |
           VERSION=$(node -p "require('./packages/cli/package.json').version")
@@ -31,6 +35,5 @@ jobs:
       - run: pnpm --filter forgeboard build
       - name: Publish
         working-directory: packages/cli
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # Trusted Publishing also adds provenance automatically.
+        run: npm publish --access public

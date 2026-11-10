@@ -124,8 +124,10 @@ packages/
 ### Releasing
 
 1. Bump `version` in `packages/cli/package.json` and add the section to `CHANGELOG.md`.
-2. Merge to `main`, then tag: `git tag v1.7.0 && git push origin v1.7.0`.
-3. The **Publish to npm** workflow checks the tag matches the version, builds the package and publishes it (needs the `NPM_TOKEN` repository secret).
+2. Merge to `main`, then tag: `git tag v1.7.1 && git push origin v1.7.1`.
+3. The **Publish to npm** workflow checks the tag matches the version, builds the package and publishes it with npm Trusted Publishing (no token; set up once on npmjs.com under the package's Settings → Trusted Publisher).
+
+The very first version was published by hand (`pnpm package`, then `npm publish --access public` in `packages/cli`), since npm only lets you add a trusted publisher to a package that already exists.
 
 To try the package locally: `pnpm package`, then `npm pack` in `packages/cli` and install the `.tgz` anywhere.
 
