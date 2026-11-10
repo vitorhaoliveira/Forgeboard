@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - name: Build the npm package (includes the web build)
+        run: pnpm --filter forgeboard build
+      - name: Smoke test the package
+        run: |
+          cd packages/cli
+          npm pack
+          mkdir -p /tmp/smoke && cd /tmp/smoke && npm init -y > /dev/null
+          npm i "$GITHUB_WORKSPACE/packages/cli/forgeboard-$(node -p "require('$GITHUB_WORKSPACE/packages/cli/package.json').version").tgz"
+          npx forgeboard --no-open --port 4599 --data-dir /tmp/smoke/data &
+          for i in $(seq 1 40); do curl -sf http://localhost:4599/api/health && break; sleep 1; done
+          curl -sf -o /dev/null http://localhost:4599/

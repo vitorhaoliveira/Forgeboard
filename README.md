@@ -6,7 +6,7 @@
 
 <sub>The demo above runs in the browser with a simulated crew (`pnpm demo`). See [Live demo](#live-demo).</sub>
 
-> Status: **v1.6**. Agents ask with forms and editable plans (A2UI), public demo mode, Workspaces per project, built-in "Build & Review" flow, live run view, merge decision, editable crew and house rules, English (US) and Brazilian Portuguese. Next up (v2): design your own flows with drag-and-drop blocks.
+> Status: **v1.7**. Install with `npx forgeboard`, agents ask with forms and editable plans (A2UI), public demo mode, Workspaces per project, built-in "Build & Review" flow, live run view, merge decision, editable crew and house rules, English (US) and Brazilian Portuguese. Next up (v2): design your own flows with drag-and-drop blocks.
 
 ## How it works
 
@@ -57,14 +57,32 @@ Publish it on Vercel:
 
 ## Getting started
 
-Requirements: Node 22.13+, pnpm, git, and [Claude Code](https://docs.claude.com/en/docs/claude-code) logged in (subscription or API key — Forgeboard never sees it).
+Requirements: **Node 22.13+**, **git**, and [Claude Code](https://docs.claude.com/en/docs/claude-code) logged in (subscription or API key — Forgeboard never sees it).
 
 ```bash
+npx forgeboard
+```
+
+That's it: it opens http://localhost:4317. Create a workspace with one or more repositories (any git repo with at least one commit), and type a task in the top bar. To keep it installed: `npm i -g forgeboard`, then run `forgeboard`.
+
+| Option | Default | |
+|---|---|---|
+| `-p, --port <port>` | `4317` | Port to serve on (loopback only) |
+| `--data-dir <dir>` | `~/.forgeboard` | Tasks, settings and worktrees |
+| `--no-open` | | Don't open the browser |
+
+### From source
+
+To work on Forgeboard itself (needs pnpm):
+
+```bash
+git clone https://github.com/vitorhaoliveira/Forgeboard.git
+cd Forgeboard
 pnpm install
 pnpm dev
 ```
 
-Open http://localhost:3000, create a workspace with one or more repositories (any git repo with at least one commit), and type a task in the top bar.
+The API runs on :4317 and the web app on http://localhost:3000, with hot reload.
 
 **Try it without spending tokens:** in **Crew** (the default crew), set both agents to **Mock (no AI)**. The scripted crew asks a question, gets a review rejected, fixes it and gets approved — with real file changes, so merging works too.
 
@@ -99,8 +117,17 @@ apps/
   server/   Local API (Hono + SQLite): orchestrator, git worktrees, checks, providers, SSE
   web/      Next.js UI (next-intl, Tailwind): All desk, workspace desk and settings, Run, Decide, Crew, Settings
 packages/
+  cli/      The `forgeboard` npm package: one command that serves the API and the web app on one port
   shared/   Types shared by server and web (Task, RunEvent, Verdict…) and the A2UI form catalog
 ```
+
+### Releasing
+
+1. Bump `version` in `packages/cli/package.json` and add the section to `CHANGELOG.md`.
+2. Merge to `main`, then tag: `git tag v1.7.0 && git push origin v1.7.0`.
+3. The **Publish to npm** workflow checks the tag matches the version, builds the package and publishes it (needs the `NPM_TOKEN` repository secret).
+
+To try the package locally: `pnpm package`, then `npm pack` in `packages/cli` and install the `.tgz` anywhere.
 
 Key server files: `orchestrator.ts` (the Build & Review loop), `prompts.ts` (what each agent is told and how its answer is parsed), `git.ts` (worktrees, diff, merge), `checks.ts`.
 
@@ -111,6 +138,7 @@ Key server files: `orchestrator.ts` (the Build & Review loop), `prompts.ts` (wha
 - [x] **v1.1 — Workspaces**: projects with their own repos, crew and rules; "All" desk
 - [x] **v1.5 — Public demo**: simulated crew in the browser, replay of finished runs
 - [x] **v1.6 — Rich questions (A2UI)**: agents ask with small forms and editable plans
+- [x] **v1.7 — One-command install**: `npx forgeboard`, published to npm from a version tag
 - [ ] **v2 — Flow studio**: build your own flows (agents, checks, "ask me" gates, loops, parallel steps), custom agents
 - [ ] **v3 — More agents**: Codex CLI and API-key providers, parallel runs, cost dashboard
 - [ ] **v4 — Routines**: scheduled and reusable tasks

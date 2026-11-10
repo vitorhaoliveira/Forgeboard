@@ -12,7 +12,8 @@
     "dev": "concurrently -n server,web -c blue,magenta \"pnpm --filter @forgeboard/server dev\" \"pnpm --filter @forgeboard/web dev\"",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "demo": "NEXT_PUBLIC_FORGEBOARD_DEMO=1 pnpm --filter @forgeboard/web dev"
+    "demo": "NEXT_PUBLIC_FORGEBOARD_DEMO=1 pnpm --filter @forgeboard/web dev",
+    "package": "pnpm --filter forgeboard build"
   },
   "devDependencies": {
     "concurrently": "^10.0.7",

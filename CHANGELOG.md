@@ -2,6 +2,23 @@
 
 All notable changes to Forgeboard are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.7.0] — 2026-11-10
+
+One-command install: `npx forgeboard`.
+
+### Added
+
+- **`forgeboard` npm package** (`packages/cli`). One command starts the API and the web app on a single port (default 4317) and opens the browser. Options: `--port`, `--data-dir`, `--no-open`, `--version`, `--help`.
+- Friendly start-up checks: Node 22.13+ is required (built-in SQLite), a clear message when the port is taken, and a hint when Claude Code isn't installed (the Mock crew still works).
+- The package ships a trimmed Next.js standalone build with its runtime packages included: about 4.4 MB to download, no dependencies to install.
+- **CI** on every pull request and on `main`: typecheck, build the package and smoke-test the installed command.
+- **Publish workflow**: pushing a `v*` tag publishes to npm with provenance, after checking the tag matches the package version.
+
+### Changed
+
+- The server's startup moved to `startServer()` (`apps/server/src/start.ts`), which can also serve the web app on the same port. `pnpm dev` works as before.
+- README: install with `npx forgeboard`; running from source is now under "From source", plus a "Releasing" section.
+
 ## [1.6.0] — 2026-11-10
 
 Rich questions: agents ask with small forms and editable plans, rendered with [A2UI](https://a2ui.org/).
