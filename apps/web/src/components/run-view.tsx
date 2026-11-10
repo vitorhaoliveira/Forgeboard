@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { GitBranch, Loader2, Square, Trash2 } from "lucide-react";
+import { GitBranch, Loader2, Play, Square, Trash2 } from "lucide-react";
 import { isActive, isFinished, type Actor, type FlowNode, type RunEvent } from "@forgeboard/shared";
 import { api } from "@/lib/api";
 import { useAppState, WorkspaceScope } from "@/lib/app-state";
@@ -44,7 +44,24 @@ export function RunView({ taskId }: { taskId: string }) {
   const router = useRouter();
   const name = useActorName();
   const { refreshTasks, workspace, repo } = useAppState();
-  const { task, events, error } = useTaskStream(taskId);
+  const { task, events: allEvents, error } = useTaskStream(taskId);
+  /** While replaying, how many events are shown. */
+  const [replayAt, setReplayAt] = useState<number | null>(null);
+  const events = useMemo(() => (replayAt === null ? allEvents : allEvents.slice(0, replayAt)), [allEvents, replayAt]);
+
+  useEffect(() => {
+    if (replayAt === null) return;
+    if (replayAt >= allEvents.length) {
+      const done = setTimeout(() => setReplayAt(null), 1200);
+      return () => clearTimeout(done);
+    }
+    // Follow the original rhythm, ten times faster, within sensible bounds.
+    const cur = allEvents[replayAt - 1];
+    const nxt = allEvents[replayAt];
+    const gap = cur && nxt ? (new Date(nxt.ts).getTime() - new Date(cur.ts).getTime()) / 10 : 300;
+    const timer = setTimeout(() => setReplayAt((n) => (n ?? 0) + 1), Math.min(900, Math.max(120, gap)));
+    return () => clearTimeout(timer);
+  }, [replayAt, allEvents]);
   const [filter, setFilter] = useState<Actor | null>(null);
   const [busy, setBusy] = useState<"stop" | "discard" | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -140,6 +157,12 @@ export function RunView({ taskId }: { taskId: string }) {
           </div>
         </div>
         <span className="ml-auto flex gap-2">
+          {!live && allEvents.length > 0 && (
+            <Button onClick={() => setReplayAt(replayAt === null ? 1 : null)}>
+              {replayAt === null ? <Play className="size-3.5" aria-hidden="true" /> : <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
+              {replayAt === null ? t("replay") : t("replaying")}
+            </Button>
+          )}
           {task.status === "review" && (
             <Link href={`/runs/${task.id}/decide`} className={buttonClass("primary")}>
               {t("reviewMerge")}
@@ -179,7 +202,7 @@ export function RunView({ taskId }: { taskId: string }) {
               </div>
             </div>
           )}
-          <RunTimeline segments={segs} start={bounds.start} end={bounds.end} live={live} />
+          <RunTimeline segments={segs} start={bounds.start} end={replayAt === null ? bounds.end : Math.max(bounds.start + 1000, new Date(events.at(-1)?.ts ?? task.createdAt).getTime())} live={live || replayAt !== null} />
         </section>
 
         <aside aria-label={t("everything")} className="flex max-h-[calc(100vh-61px)] min-h-[420px] max-w-[440px] grow basis-[360px] flex-col border-l border-border bg-panel">

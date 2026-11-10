@@ -19,7 +19,7 @@ export function useTaskStream(taskId: string) {
 
   useEffect(() => {
     let cancelled = false;
-    let source: EventSource | null = null;
+    let unsubscribe: (() => void) | null = null;
 
     const refetchTask = () =>
       api
@@ -36,17 +36,14 @@ export function useTaskStream(taskId: string) {
         setError(null);
         if (isFinished(loaded.status)) return;
 
-        source = new EventSource(api.streamUrl(taskId, stored.at(-1)?.seq ?? 0));
-        source.addEventListener("run", (msg) => {
-          const event = JSON.parse((msg as MessageEvent<string>).data) as RunEvent;
-          setEvents((prev) => (prev.some((e) => e.seq === event.seq) ? prev : [...prev, event]));
-          if (event.type === "status" || event.type === "verdict" || event.type === "round" || event.type === "question") {
-            void refetchTask();
-          }
-        });
-        source.addEventListener("end", () => {
-          source?.close();
-          void refetchTask();
+        unsubscribe = api.subscribe(taskId, stored.at(-1)?.seq ?? 0, {
+          onEvent: (event) => {
+            setEvents((prev) => (prev.some((e) => e.seq === event.seq) ? prev : [...prev, event]));
+            if (event.type === "status" || event.type === "verdict" || event.type === "round" || event.type === "question") {
+              void refetchTask();
+            }
+          },
+          onEnd: () => void refetchTask(),
         });
       })
       .catch((err: unknown) => {
@@ -55,7 +52,7 @@ export function useTaskStream(taskId: string) {
 
     return () => {
       cancelled = true;
-      source?.close();
+      unsubscribe?.();
     };
   }, [taskId, reloadKey]);
 

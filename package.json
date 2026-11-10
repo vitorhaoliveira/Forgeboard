@@ -2,7 +2,7 @@
   "name": "forgeboard",
   "private": true,
   "version": "0.0.1",
-  "description": "Local cockpit for AI coding agents — Lead, Builder and Reviewer working together on your repo.",
+  "description": "Local cockpit for AI coding agents \u2014 Lead, Builder and Reviewer working together on your repo.",
   "type": "module",
   "packageManager": "pnpm@10.28.0",
   "engines": {
@@ -11,7 +11,8 @@
   "scripts": {
     "dev": "concurrently -n server,web -c blue,magenta \"pnpm --filter @forgeboard/server dev\" \"pnpm --filter @forgeboard/web dev\"",
     "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "demo": "NEXT_PUBLIC_FORGEBOARD_DEMO=1 pnpm --filter @forgeboard/web dev"
   },
   "devDependencies": {
     "concurrently": "^10.0.7",

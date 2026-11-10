@@ -4,7 +4,7 @@
 
 ![Desk](docs/screenshots/desk.png)
 
-> Status: **v1.1**. Workspaces per project, built-in "Build & Review" flow, live run view, merge decision, editable crew and house rules, English (US) and Brazilian Portuguese. Next up (v2): design your own flows with drag-and-drop blocks.
+> Status: **v1.5**. Public demo mode, Workspaces per project, built-in "Build & Review" flow, live run view, merge decision, editable crew and house rules, English (US) and Brazilian Portuguese. Next up (v2): design your own flows with drag-and-drop blocks.
 
 ## How it works
 
@@ -28,6 +28,23 @@ your task → Forge (builds) → Checks (tests · lint · types) → Hawk (revie
 ![Run](docs/screenshots/run.png)
 
 ![Decision](docs/screenshots/decide.png)
+
+## Live demo
+
+The web app has a **demo mode**: a simulated crew runs entirely in the browser, with three workspaces and tasks in every state. Visitors can answer the agent's question, watch the run, review the diff, merge, replay finished runs and start new tasks. No server, no AI and no real repository involved.
+
+Run it locally:
+
+```bash
+pnpm demo
+```
+
+Publish it on Vercel:
+
+1. Import the repository at [vercel.com/new](https://vercel.com/new).
+2. Set **Root Directory** to `apps/web` (Vercel installs the pnpm workspace from the root).
+3. Add the environment variable `NEXT_PUBLIC_FORGEBOARD_DEMO=1`.
+4. Deploy.
 
 ## Getting started
 
@@ -83,7 +100,8 @@ Key server files: `orchestrator.ts` (the Build & Review loop), `prompts.ts` (wha
 - [x] **v0 — Foundation**: run a task, live stream, cancel, history
 - [x] **v1 — Crew & review**: Build & Review loop, worktrees, checks, agent questions, merge decision, house rules, EN/PT
 - [x] **v1.1 — Workspaces**: projects with their own repos, crew and rules; "All" desk
-- [ ] **v1.5 — Public demo**: replay recorded runs in a hosted demo
+- [x] **v1.5 — Public demo**: simulated crew in the browser, replay of finished runs
+- [ ] **v1.6 — Rich questions (A2UI)**: agents ask with small forms and editable plans
 - [ ] **v2 — Flow studio**: build your own flows (agents, checks, "ask me" gates, loops, parallel steps), custom agents
 - [ ] **v3 — More agents**: Codex CLI and API-key providers, parallel runs, cost dashboard
 - [ ] **v4 — Routines**: scheduled and reusable tasks

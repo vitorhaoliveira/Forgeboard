@@ -121,7 +121,9 @@
     "messageSoon": "Falar com os agentes no meio da execução chega em breve. Use “Devolver com observações” depois da revisão.",
     "branch": "branch",
     "started": "começou {time}",
-    "notFound": "Tarefa não encontrada."
+    "notFound": "Tarefa não encontrada.",
+    "replay": "Reproduzir",
+    "replaying": "Reproduzindo…"
   },
   "decide": {
     "back": "← Mesa",
@@ -289,5 +291,9 @@
     "delete": "Excluir workspace",
     "deleteConfirm": "Excluir \"{name}\"? As tarefas e regras dele são removidas; seus repositórios no disco não são tocados.",
     "dangerHint": "Arquivar esconde o workspace e mantém o histórico. Excluir remove tarefas e regras; seus repositórios não são tocados."
+  },
+  "demo": {
+    "banner": "Demo ao vivo: uma equipe simulada roda no seu navegador. Nenhuma IA é chamada e nenhum repositório real é tocado.",
+    "github": "Rodar na sua máquina →"
   }
 }
