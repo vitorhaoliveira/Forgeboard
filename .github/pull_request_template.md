@@ -7,7 +7,7 @@
 ## How it was tested
 
 - [ ] `pnpm typecheck`
-- [ ] `pnpm --filter @forgeboard/web build`
+- [ ] `pnpm package` (builds the web app and the npm package)
 - [ ] Tried it in the app (mock crew or demo)
 
 ## Screenshots

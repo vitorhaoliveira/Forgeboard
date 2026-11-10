@@ -22,7 +22,8 @@ body:
     attributes:
       label: Where
       options:
-        - Local app (pnpm dev)
+        - Installed (npx forgeboard)
+        - From source (pnpm dev)
         - Public demo
     validations:
       required: true
