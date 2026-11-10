@@ -187,7 +187,7 @@
     "balanced": "Balanced",
     "strict": "Strict",
     "runsOn": "Runs on",
-    "notInstalled": "not installed",
+    "notInstalled": "not available, see Settings",
     "instructions": "Extra instructions",
     "rules": "General house rules",
     "rulesSubtitle": "Every agent follows these in every workspace.",
@@ -205,7 +205,7 @@
     "addCheck": "Add check",
     "providers": "Agents available on this machine",
     "available": "available",
-    "missing": "not found",
+    "missing": "unavailable",
     "workspaces": "Workspaces",
     "archived": "archived",
     "claudeSetupTitle": "How to connect Claude",
@@ -213,7 +213,13 @@
     "claudeSetupLogin": "Run it once and log in when it asks (or type /login):",
     "claudeSetupAccount": "Use your Claude subscription (Pro or Max) or an API key from the Claude Console.",
     "claudeSetupRestart": "Quit Claude Code and restart Forgeboard. This should then say \"available\".",
-    "claudeSetupNote": "Forgeboard uses the Claude Code installed on your machine and never sees your password or key. Without it, use the \"Mock (no AI)\" crew to try things out."
+    "claudeSetupNote": "Forgeboard uses the Claude Code installed on your machine and never sees your password or key. Without it, use the \"Mock (no AI)\" crew to try things out.",
+    "codexSetupTitle": "How to connect Codex",
+    "codexSetupInstall": "Install the Codex CLI in a terminal:",
+    "codexSetupLogin": "Log in (opens the browser):",
+    "codexSetupAccount": "Use your ChatGPT account, or an OpenAI API key with codex login --with-api-key.",
+    "codexSetupRestart": "Restart Forgeboard and pick Codex for an agent in Crew.",
+    "codexSetupNote": "Forgeboard uses the Codex installed on your machine and never sees your password or key. Codex runs in its own sandbox: Hawk only reads, and Forge only writes inside the task's folder."
   },
   "runs": {
     "title": "Runs",
@@ -327,7 +333,7 @@
     "cmdStandardHint": "Edits files and runs npm, pnpm, yarn, bun, npx and node to install and test. In practice this can run any code on your machine: use it on repositories you trust.",
     "cmdRestricted": "Restricted",
     "cmdRestrictedHint": "Only edits files and uses git and ls to read. No commands: Forgeboard runs the checks afterwards and sends back any failures.",
-    "safetyNote": "Hawk never changes files or runs commands, in either mode."
+    "safetyNote": "Hawk never changes files or runs commands, in either mode. With Codex, its sandbox also keeps Forge from writing outside the task's folder; in Restricted it has no network (commands still run, isolated)."
   },
   "demo": {
     "banner": "Live demo: a simulated crew runs in your browser. No AI is called and nothing touches a real repository.",

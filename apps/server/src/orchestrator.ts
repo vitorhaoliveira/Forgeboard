@@ -149,6 +149,7 @@ async function forgeStep(taskId: string, mode: ForgeMode, signal: AbortSignal): 
     cwd: worktree,
     permissionMode: "acceptEdits",
     allowedTools: FORGE_ALLOWED_TOOLS[commands],
+    commands,
     // Keep the same conversation across rounds so Forge remembers its work.
     resumeSession: mode.kind === "start" ? undefined : state.forgeSession,
     locale: task.locale,

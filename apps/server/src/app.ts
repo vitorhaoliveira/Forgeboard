@@ -252,7 +252,7 @@ app.patch("/api/agents/:id", async (c) => {
     c,
     z.object({
       name: z.string().trim().min(1).max(24).optional(),
-      provider: z.enum(["claude-code", "mock"]).optional(),
+      provider: z.enum(["claude-code", "codex", "mock"]).optional(),
       personality: z.enum(["mentor", "balanced", "strict"]).optional(),
       instructions: z.string().max(2_000).optional(),
     }),

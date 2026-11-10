@@ -2,6 +2,22 @@
 
 All notable changes to Forgeboard are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.8.0] — 2026-11-10
+
+Codex joins the crew.
+
+### Added
+
+- **Codex provider.** Any agent can run on OpenAI's Codex CLI (`codex exec --json`), using the CLI's own login (ChatGPT account or API key). Mix providers per agent in **Crew**, for example Claude Code builds and Codex reviews.
+- Codex runs in its own sandbox: Hawk is read-only, Forge can only write inside the task's worktree. A workspace's **Standard** mode gives Forge network access (to install packages); **Restricted** turns it off.
+- Codex's activity (commands, file changes, messages) shows in the live run like Claude's, and a paused run resumes the same Codex session after you answer.
+- Settings shows whether Codex is installed and logged in, with install and login steps.
+- `FORGEBOARD_CODEX_BIN` to point to a specific `codex` binary.
+
+### Changed
+
+- An agent CLI that is installed but logged out shows as "unavailable" (instead of "not found"), with the reason next to it.
+
 ## [1.7.1] — 2026-11-10
 
 Security release.

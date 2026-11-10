@@ -429,6 +429,7 @@ export const demoApi: Api = {
   providers: () =>
     ok<ProviderInfo[]>([
       { id: "claude-code", label: "Claude Code", available: true, detail: "Demo · simulated" },
+      { id: "codex", label: "Codex", available: true, detail: "Demo · simulated" },
       { id: "mock", label: "Mock (no AI)", available: true, detail: "Scripted crew" },
     ]),
 

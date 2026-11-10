@@ -1,10 +1,12 @@
 import type { ProviderId, ProviderInfo } from "@forgeboard/shared";
 import { claudeCodeProvider } from "./claude-code.js";
+import { codexProvider } from "./codex.js";
 import { mockProvider } from "./mock.js";
 import type { Provider } from "./types.js";
 
 const providers: Record<ProviderId, Provider> = {
   "claude-code": claudeCodeProvider,
+  codex: codexProvider,
   mock: mockProvider,
 };
 
