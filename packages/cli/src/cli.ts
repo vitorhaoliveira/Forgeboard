@@ -14,7 +14,6 @@ import { parseArgs } from "node:util";
 
 declare const __VERSION__: string;
 const VERSION = typeof __VERSION__ === "string" ? __VERSION__ : "dev";
-const MIN_NODE = [22, 13] as const;
 const DEFAULT_PORT = 4317;
 
 const dim = (s: string) => (process.stdout.isTTY ? `\x1b[2m${s}\x1b[22m` : s);
@@ -39,13 +38,6 @@ Options
 function fail(message: string): never {
   console.error(`\n${orange("✖")} ${message}\n`);
   process.exit(1);
-}
-
-function checkNode() {
-  const [major = 0, minor = 0] = process.versions.node.split(".").map(Number);
-  if (major < MIN_NODE[0] || (major === MIN_NODE[0] && minor < MIN_NODE[1])) {
-    fail(`Forgeboard needs Node ${MIN_NODE.join(".")} or newer (it uses the built-in SQLite). You have ${process.versions.node}.`);
-  }
 }
 
 /** Claude Code is optional: without it the Mock crew still works. */
@@ -106,7 +98,6 @@ async function main() {
 
   if (values.help) return void console.log(HELP);
   if (values.version) return void console.log(VERSION);
-  checkNode();
 
   const port = Number(values.port ?? process.env.FORGEBOARD_PORT ?? DEFAULT_PORT);
   if (!Number.isInteger(port) || port < 1 || port > 65535) fail(`"${values.port}" isn't a valid port.`);

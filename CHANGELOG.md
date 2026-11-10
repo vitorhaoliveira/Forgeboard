@@ -20,6 +20,10 @@ One-command install: `npx forgeboard`.
 - The server's startup moved to `startServer()` (`apps/server/src/start.ts`), which can also serve the web app on the same port. `pnpm dev` works as before.
 - README: install with `npx forgeboard`; running from source is now under "From source", plus a "Releasing" section.
 
+### Security
+
+- The local API only accepts requests for a local Host (blocks DNS rebinding), refuses changes from foreign origins, and requires a JSON body for every change. Before, any website open in the browser could send a simple cross-site POST to the API, for example to register a repository and start a task.
+
 ## [1.6.0] — 2026-11-10
 
 Rich questions: agents ask with small forms and editable plans, rendered with [A2UI](https://a2ui.org/).

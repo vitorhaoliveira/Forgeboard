@@ -38,6 +38,26 @@ export const app = new Hono();
 
 app.use("/api/*", cors({ origin: config.webOrigins }));
 
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+/**
+ * Only Forgeboard's own UI may drive the API: it can edit files and run commands on this machine.
+ * - Host must be local, which blocks DNS rebinding.
+ * - Changes need a JSON body, so a browser always sends a CORS preflight first (a plain
+ *   cross-site form or text/plain POST is refused), and a foreign Origin is refused outright.
+ */
+app.use("/api/*", async (c, next) => {
+  const host = c.req.header("host") ?? "";
+  if (!LOCAL_HOSTS.has(host.replace(/:\d+$/, ""))) return c.json({ error: "Forbidden host" }, 403);
+  if (!SAFE_METHODS.has(c.req.method)) {
+    const origin = c.req.header("origin");
+    if (origin && origin !== `http://${host}` && !config.webOrigins.includes(origin)) return c.json({ error: "Forbidden origin" }, 403);
+    if (!c.req.header("content-type")?.toLowerCase().startsWith("application/json")) return c.json({ error: "Expected a JSON body" }, 415);
+  }
+  await next();
+});
+
 app.onError((err, c) => {
   if (err instanceof HttpError) return c.json({ error: err.message }, err.status);
   if (err instanceof FlowError || err instanceof GitError) return c.json({ error: err.message }, 409);

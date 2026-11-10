@@ -45,7 +45,9 @@ for (const entry of readdirSync(store)) {
     const dirs = name.startsWith("@") ? readdirSync(join(nm, name)).map((n) => `${name}/${n}`) : [name];
     for (const dir of dirs) {
       const src = join(nm, dir);
-      if (lstatSync(src).isSymbolicLink() || existsSync(join(modules, dir))) continue;
+      if (lstatSync(src).isSymbolicLink()) continue;
+      // A flat node_modules holds one version per package; two would need a nested layout.
+      if (copied.includes(dir)) throw new Error(`Two versions of ${dir} in the web build: the flat copy can't hold both.`);
       cpSync(src, join(modules, dir), { recursive: true, dereference: true });
       copied.push(dir);
     }
@@ -76,6 +78,12 @@ await build({
 writeFileSync(
   join(dist, "cli.js"),
   `#!/usr/bin/env node
+// Checked here, before anything loads node:sqlite (older Node fails on that import).
+const [major, minor] = process.versions.node.split(".").map(Number);
+if (major < 22 || (major === 22 && minor < 13)) {
+  console.error("\\n✖ Forgeboard needs Node 22.13 or newer (it uses the built-in SQLite). You have " + process.versions.node + ".\\n");
+  process.exit(1);
+}
 const emit = process.emitWarning.bind(process);
 process.emitWarning = (warning, ...rest) => {
   const text = typeof warning === "string" ? warning : warning?.message ?? "";
