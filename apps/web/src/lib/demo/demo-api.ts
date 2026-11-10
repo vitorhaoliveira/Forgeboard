@@ -25,12 +25,14 @@ import type {
   Workspace,
 } from "@forgeboard/shared";
 import type { Api, StreamHandlers } from "../api";
+import { sanitizeAnswer } from "@forgeboard/shared/a2ui";
 import {
   API_CHECKS,
   apiValidationScenario,
   BLOG_CHECKS,
   paginationScenario,
   pixScenario,
+  settingsScenario,
   SHOP_CHECKS,
   simpleDoneScenario,
   tr,
@@ -359,6 +361,11 @@ function seed(locale: Locale): Store {
   const rest = runInstant(pag.id, runSteps(pag.id, paginationScenario(L), tr(L, "I'll start by looking at how the users table loads data.", "Vou começar vendo como a tabela de usuários carrega os dados.")), ago(3));
   store.pending.set(pag.id, rest);
 
+  // Waiting for a plan to be approved.
+  const settings = add(acmeWeb, tr(L, "Build the user settings page", "Criar a página de configurações do usuário"), settingsScenario(L), 1);
+  const restSettings = runInstant(settings.id, runSteps(settings.id, settingsScenario(L), tr(L, "Let me see how pages and auth are set up.", "Deixa eu ver como as páginas e a autenticação estão montadas.")), ago(1));
+  store.pending.set(settings.id, restSettings);
+
   return store;
 }
 
@@ -553,13 +560,23 @@ export const demoApi: Api = {
     return ok(task);
   },
   diff: (taskId) => ok(s().diffs.get(taskId) ?? []),
-  answer: (taskId, text, remember) => {
+  answer: (taskId, text, remember, extra) => {
     const st = s();
     const task = st.tasks.find((t) => t.id === taskId);
     if (!task || task.status !== "waiting") return fail("This task isn't waiting for an answer.");
-    emit(taskId, { type: "answer", actor: "you", text, remember });
-    if (remember && task.question) {
-      st.rules.unshift({ id: id(), ...placeRule("repo", task.repoId), text: `${task.question.question} → ${text}`, enabled: true, source: "answer", createdAt: iso(Date.now()) });
+    const form = task.question?.form;
+    const data = form && extra?.data && !extra.replan ? sanitizeAnswer(form, extra.data) : undefined;
+    emit(taskId, { type: "answer", actor: "you", text, remember, ...(data ? { data } : {}), ...(extra?.note ? { note: extra.note } : {}), ...(extra?.replan ? { replan: true } : {}) });
+    if (remember && task.question && !extra?.replan) {
+      const texts = form
+        ? form.fields
+            .filter((f) => f.type !== "steps" && data)
+            .map((f) => {
+              const v = data![f.id];
+              return `${f.label} → ${typeof v === "boolean" ? tr(st.locale, v ? "yes" : "no", v ? "sim" : "não") : Array.isArray(v) ? v.join(", ") : v}`;
+            })
+        : [`${task.question.question} → ${text}`];
+      for (const t of texts) st.rules.unshift({ id: id(), ...placeRule("repo", task.repoId), text: t, enabled: true, source: "answer", createdAt: iso(Date.now()) });
     }
     node(taskId, "you", "done");
     setStatus(taskId, "running", { question: null });

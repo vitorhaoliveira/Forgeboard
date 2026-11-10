@@ -1,7 +1,17 @@
+import { compileForm, normalizeForm } from "@forgeboard/shared/a2ui";
 import type { AgentQuestion, CheckCommand, CheckResult, DiffFile, Locale, ReviewIssue, Verdict } from "@forgeboard/shared";
 
 /** Picks the English or Portuguese text. */
 export const tr = (locale: Locale, en: string, pt: string) => (locale === "pt-BR" ? pt : en);
+
+let surfaces = 0;
+
+/** Builds a question the way the server does: the agent's form, compiled to A2UI messages. */
+function formQuestion(L: Locale, raw: unknown): AgentQuestion {
+  const form = normalizeForm(raw)!;
+  const submit = form.kind === "plan" ? tr(L, "Approve and start", "Aprovar e começar") : tr(L, "Send answers", "Enviar respostas");
+  return { question: form.title, context: form.context, options: [], form, ui: compileForm(form, `demo-${++surfaces}`, submit) };
+}
 
 export interface ToolStep {
   name: string;
@@ -65,16 +75,28 @@ export function paginationScenario(L: Locale): ScenarioContent {
       { name: "Read", input: { file_path: "src/components/UsersTable.tsx" }, output: "export function UsersTable({ users }) {\n  return <table>…</table>;\n}" },
       { name: "Read", input: { file_path: "src/app/api/users/route.ts" }, output: "export async function GET() {\n  return Response.json(await db.user.findMany());\n}" },
     ],
-    question: {
-      question: tr(L, "When a filter changes, should the table jump back to page 1?", "Quando um filtro muda, a tabela deve voltar para a página 1?"),
+    question: formQuestion(L, {
+      kind: "questions",
+      title: tr(L, "Before I add pagination, a few decisions", "Antes de adicionar a paginação, algumas decisões"),
       context: tr(
         L,
-        "Keeping the page can show an empty result if the filtered list is shorter. Resetting is what OrdersTable does.",
-        "Manter a página pode mostrar um resultado vazio se a lista filtrada for menor. Voltar para a página 1 é o que a OrdersTable faz.",
+        "The table loads every user at once today. I suggested what matches OrdersTable.",
+        "Hoje a tabela carrega todos os usuários de uma vez. Sugeri o que combina com a OrdersTable.",
       ),
-      options: [tr(L, "Yes, reset to page 1", "Sim, voltar para a página 1"), tr(L, "Keep the current page", "Manter a página atual")],
-      suggested: 0,
-    },
+      fields: [
+        {
+          id: "reset",
+          type: "choice",
+          label: tr(L, "When a filter changes", "Quando um filtro muda"),
+          options: [tr(L, "Back to page 1", "Voltar para a página 1"), tr(L, "Keep the current page", "Manter a página atual")],
+          suggested: 0,
+          hint: tr(L, "Keeping the page can show an empty result when the filtered list is shorter.", "Manter a página pode mostrar um resultado vazio quando a lista filtrada for menor."),
+        },
+        { id: "pageSize", type: "choice", label: tr(L, "Rows per page", "Linhas por página"), options: ["10", "25", "50"], suggested: 1 },
+        { id: "url", type: "toggle", label: tr(L, "Keep the page in the URL (?page=2)?", "Manter a página na URL (?page=2)?"), value: true },
+        { id: "name", type: "text", label: tr(L, "Component name", "Nome do componente"), value: "Pagination", mono: true, hint: tr(L, "Goes in src/components/", "Vai em src/components/") },
+      ],
+    }),
     plan: tr(L, "Got it. I'll add `page` and `pageSize` to the API, a `Pagination` component, and keep the page in the URL.", "Entendido. Vou adicionar `page` e `pageSize` na API, um componente `Pagination` e manter a página na URL."),
     build: [
       { name: "Edit", input: { file_path: "src/app/api/users/route.ts" }, output: "The file has been updated." },
@@ -232,3 +254,36 @@ export function simpleDoneScenario(L: Locale, title: string, files: string[]): S
 }
 
 export type VerdictFor = (round: number, approved: boolean) => Verdict;
+
+/** A bigger task: Forge proposes a plan first, and the visitor edits it before anything is built. */
+export function settingsScenario(L: Locale): ScenarioContent {
+  const files = ["src/app/api/me/route.ts", "src/app/settings/page.tsx", "src/components/SettingsForm.tsx", "e2e/settings.spec.ts"];
+  return {
+    ...simpleDoneScenario(L, tr(L, "user settings page", "página de configurações do usuário"), files),
+    explore: [
+      { name: "Glob", input: { pattern: "src/app/**/page.tsx" }, output: "src/app/page.tsx\nsrc/app/users/page.tsx\nsrc/app/orders/page.tsx" },
+      { name: "Read", input: { file_path: "src/lib/auth.ts" }, output: "export async function currentUser() { … }" },
+      { name: "Grep", input: { pattern: "useToast" }, output: "src/components/OrdersTable.tsx\nsrc/components/ui/toast.tsx" },
+    ],
+    question: formQuestion(L, {
+      kind: "plan",
+      title: tr(L, "This one touches several layers, so here is my plan", "Essa tarefa toca várias camadas, então aqui está meu plano"),
+      context: tr(L, "Adjust anything before I start: uncheck, reorder or rewrite any step.", "Ajuste o que quiser antes de eu começar: desmarque, reordene ou reescreva qualquer etapa."),
+      fields: [
+        {
+          id: "plan",
+          type: "steps",
+          label: tr(L, "Proposed plan", "Plano proposto"),
+          value: [
+            { text: tr(L, "GET/PATCH /api/me route with zod validation", "Rota GET/PATCH /api/me com validação zod"), estimate: "~8 min" },
+            { text: tr(L, "Form with name, email and time zone", "Formulário com nome, e-mail e fuso horário"), estimate: "~10 min" },
+            { text: tr(L, "Save with optimistic update and error toasts", "Salvar com atualização otimista e toasts de erro"), estimate: "~6 min" },
+            { text: tr(L, "Avatar upload (up to 2 MB)", "Upload de avatar (até 2 MB)"), estimate: "~12 min" },
+            { text: tr(L, "End-to-end tests for saving", "Testes e2e do fluxo de salvar"), estimate: "~7 min" },
+          ],
+        },
+      ],
+    }),
+    plan: tr(L, "Plan approved. Starting with the API route.", "Plano aprovado. Começando pela rota da API."),
+  };
+}

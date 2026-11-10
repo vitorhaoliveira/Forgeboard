@@ -77,13 +77,27 @@ export const mockProvider: Provider = {
         [500, { type: "tool_use", toolUseId: "f2", name: "Read", input: { file_path: join(cwd, "README.md") } }],
         [700, { type: "tool_result", toolUseId: "f2", output: "# Project", isError: false }],
       ];
-      const question = {
-        question: t(locale, "Should the new notes go in a separate file or in the README?", "As novas notas devem ir num arquivo separado ou no README?"),
+      // Ask with a form: one decision plus a short plan to approve. A2UI renders it in the browser.
+      const form = {
+        kind: "plan",
+        title: t(locale, "Before I start: one decision and the plan", "Antes de começar: uma decisão e o plano"),
         context: t(locale, "The README is already long. A separate file keeps it focused.", "O README já está longo. Um arquivo separado deixa ele mais focado."),
-        options: [t(locale, "Separate file", "Arquivo separado"), t(locale, "In the README", "No README")],
-        suggested: 0,
+        fields: [
+          { id: "place", type: "choice", label: t(locale, "Where should the notes go?", "Onde as notas devem ficar?"), options: [t(locale, "Separate file", "Arquivo separado"), t(locale, "In the README", "No README")], suggested: 0 },
+          { id: "date", type: "toggle", label: t(locale, "Add today's date?", "Adicionar a data de hoje?"), value: true },
+          {
+            id: "plan",
+            type: "steps",
+            label: t(locale, "Plan", "Plano"),
+            value: [
+              { text: t(locale, "Create the notes file", "Criar o arquivo de notas"), estimate: "~1 min" },
+              { text: t(locale, "Write a short description", "Escrever uma descrição curta"), estimate: "~1 min" },
+              { text: t(locale, "Link it from the README", "Linkar a partir do README"), estimate: "~1 min" },
+            ],
+          },
+        ],
       };
-      text = `${t(locale, "I need one decision before I continue.", "Preciso de uma decisão antes de continuar.")}\nFORGEBOARD_QUESTION: ${JSON.stringify(question)}`;
+      text = `${t(locale, "I need your input before I continue.", "Preciso da sua opinião antes de continuar.")}\nFORGEBOARD_FORM: ${JSON.stringify(form)}`;
     } else if (round === 1) {
       steps = [
         [500, { type: "text", text: t(locale, "Got it. Creating the file now.", "Entendido. Criando o arquivo agora.") }],

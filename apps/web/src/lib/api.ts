@@ -5,6 +5,7 @@ import {
   type CreateTaskInput,
   type CreateWorkspaceInput,
   type DiffFile,
+  type FormAnswer,
   type HouseRule,
   type ProviderInfo,
   type Repo,
@@ -41,6 +42,13 @@ const post = (body?: unknown): RequestInit => ({ method: "POST", body: JSON.stri
 const patch = (body: unknown): RequestInit => ({ method: "PATCH", body: JSON.stringify(body) });
 const del: RequestInit = { method: "DELETE" };
 const wsQuery = (workspaceId?: string) => (workspaceId ? `?workspaceId=${workspaceId}` : "");
+
+/** Extra parts of an answer to a form: the filled-in data, a note, or a request for another plan. */
+export interface AnswerExtra {
+  data?: FormAnswer;
+  note?: string;
+  replan?: boolean;
+}
 
 export interface StreamHandlers {
   onEvent: (event: RunEvent) => void;
@@ -79,7 +87,8 @@ const realApi = {
   task: (id: string) => request<{ task: Task; events: RunEvent[] }>(`/api/tasks/${id}`),
   createTask: (input: CreateTaskInput) => request<Task>("/api/tasks", post(input)),
   diff: (id: string) => request<DiffFile[]>(`/api/tasks/${id}/diff`),
-  answer: (id: string, text: string, remember: boolean) => request<Task>(`/api/tasks/${id}/answer`, post({ text, remember })),
+  answer: (id: string, text: string, remember: boolean, extra?: AnswerExtra) =>
+    request<Task>(`/api/tasks/${id}/answer`, post({ text, remember, ...extra })),
   sendBack: (id: string, notes: string) => request<Task>(`/api/tasks/${id}/send-back`, post({ notes })),
   merge: (id: string, exclude: string[] = []) => request<Task>(`/api/tasks/${id}/merge`, post({ exclude })),
   discard: (id: string) => request<Task>(`/api/tasks/${id}/discard`, post()),

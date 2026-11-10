@@ -6,7 +6,7 @@
 
 <sub>The demo above runs in the browser with a simulated crew (`pnpm demo`). See [Live demo](#live-demo).</sub>
 
-> Status: **v1.5**. Public demo mode, Workspaces per project, built-in "Build & Review" flow, live run view, merge decision, editable crew and house rules, English (US) and Brazilian Portuguese. Next up (v2): design your own flows with drag-and-drop blocks.
+> Status: **v1.6**. Agents ask with forms and editable plans (A2UI), public demo mode, Workspaces per project, built-in "Build & Review" flow, live run view, merge decision, editable crew and house rules, English (US) and Brazilian Portuguese. Next up (v2): design your own flows with drag-and-drop blocks.
 
 ## How it works
 
@@ -21,11 +21,16 @@ your task → Forge (builds) → Checks (tests · lint · types) → Hawk (revie
 - **Every task runs in its own git worktree** (`~/.forgeboard/worktrees/<task>`), on a branch like `fb/add-pagination-ab12c`. Your checkout is never touched until you merge.
 - **Checks are objective.** Forgeboard runs your repo's own commands (detected from `package.json`, editable in Settings) after every build. Hawk can't approve while a check fails.
 - **Agents ask instead of guessing.** When Forge needs a product decision it pauses the run; the question shows up on your Desk with one-click answers. Its session is resumed with your answer.
+- **Rich questions.** When several decisions are needed, Forge asks with a small form; for bigger tasks it proposes a plan you can edit before anything is built. Forms use [A2UI](https://a2ui.org/) with a fixed catalog of Forgeboard components, validated on the server and in the browser.
 - **The crew learns.** Answers can be saved as **house rules**, and Hawk suggests rules from what it sees in reviews. Every agent follows them on every task.
 - **One workspace per project.** Group a project's repositories in a workspace with its own crew and house rules (general → workspace → repository). The "All" desk shows what needs you across every workspace.
 - **You stay in charge.** The merge screen leads with what changed, how we know it works and the risk; then the diff, where you can leave files out.
 
 ![Desk](docs/screenshots/desk.png)
+
+| Question with a form | Editable plan |
+| --- | --- |
+| ![Forge asks four decisions in one form](docs/screenshots/questions.png) | ![Forge proposes a plan: steps can be unchecked, reordered and rewritten](docs/screenshots/plan.png) |
 
 ![All workspaces](docs/screenshots/workspaces.png)
 
@@ -94,7 +99,7 @@ apps/
   server/   Local API (Hono + SQLite): orchestrator, git worktrees, checks, providers, SSE
   web/      Next.js UI (next-intl, Tailwind): All desk, workspace desk and settings, Run, Decide, Crew, Settings
 packages/
-  shared/   Types shared by server and web (Task, RunEvent, Verdict…)
+  shared/   Types shared by server and web (Task, RunEvent, Verdict…) and the A2UI form catalog
 ```
 
 Key server files: `orchestrator.ts` (the Build & Review loop), `prompts.ts` (what each agent is told and how its answer is parsed), `git.ts` (worktrees, diff, merge), `checks.ts`.
@@ -105,7 +110,7 @@ Key server files: `orchestrator.ts` (the Build & Review loop), `prompts.ts` (wha
 - [x] **v1 — Crew & review**: Build & Review loop, worktrees, checks, agent questions, merge decision, house rules, EN/PT
 - [x] **v1.1 — Workspaces**: projects with their own repos, crew and rules; "All" desk
 - [x] **v1.5 — Public demo**: simulated crew in the browser, replay of finished runs
-- [ ] **v1.6 — Rich questions (A2UI)**: agents ask with small forms and editable plans
+- [x] **v1.6 — Rich questions (A2UI)**: agents ask with small forms and editable plans
 - [ ] **v2 — Flow studio**: build your own flows (agents, checks, "ask me" gates, loops, parallel steps), custom agents
 - [ ] **v3 — More agents**: Codex CLI and API-key providers, parallel runs, cost dashboard
 - [ ] **v4 — Routines**: scheduled and reusable tasks

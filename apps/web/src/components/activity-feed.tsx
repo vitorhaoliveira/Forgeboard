@@ -19,7 +19,7 @@ import {
   XCircle,
   type LucideIcon,
 } from "lucide-react";
-import type { Actor, CheckResult, RunEvent, Verdict } from "@forgeboard/shared";
+import type { Actor, AgentForm, CheckResult, FormAnswer, PlanStep, RunEvent, Verdict } from "@forgeboard/shared";
 import { cleanAgentText } from "@/lib/run-model";
 import { cn, formatDuration, relativePath } from "@/lib/utils";
 import { Glyph, useActorName } from "./glyph";
@@ -176,9 +176,37 @@ export function VerdictBlock({ verdict }: { verdict: Verdict }) {
   );
 }
 
-function EventItem({ event }: { event: RunEvent }) {
+/** A form's answers as small chips: "Label · value", and a step count for plans. */
+function AnswerChips({ data, form }: { data: FormAnswer; form?: AgentForm }) {
+  const t = useTranslations("form");
+  const fields = form?.fields ?? Object.keys(data).map((id) => ({ id, label: id, type: undefined }));
+  return (
+    <>
+      {fields.map((f) => {
+        const v = data[f.id];
+        if (v === undefined) return null;
+        const shown = Array.isArray(v)
+          ? v.length && typeof v[0] === "object"
+            ? t("steps", { count: (v as PlanStep[]).filter((s) => s.included !== false).length })
+            : (v as string[]).join(", ") || "—"
+          : typeof v === "boolean"
+            ? v ? t("yes") : t("no")
+            : v || "—";
+        return (
+          <span key={f.id} className="inline-flex h-[22px] items-center gap-1 rounded-full border border-border bg-panel-2 px-2 text-[11.5px]">
+            <span className="text-muted">{f.label}</span>
+            <span className="font-medium">{shown}</span>
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
+function EventItem({ event, form }: { event: RunEvent; form?: AgentForm }) {
   const t = useTranslations("run");
   const tf = useTranslations("flow");
+  const tForm = useTranslations("form");
   const name = useActorName();
   const locale = useLocale();
   void locale;
@@ -250,8 +278,17 @@ function EventItem({ event }: { event: RunEvent }) {
           <Glyph actor="you" />
           <div className="flex min-w-0 grow flex-wrap items-center gap-1.5 pt-0.5 text-[13px]">
             <span className="text-muted">{t("youAnswered")}:</span>
-            <span className="font-medium">{event.text}</span>
+            {event.data ? (
+              <AnswerChips data={event.data} form={form} />
+            ) : (
+              <span className="font-medium">{event.text}</span>
+            )}
             {event.remember && <Chip tone="accent">{t("savedAsRule")}</Chip>}
+            {event.note && (
+              <span className="basis-full text-[12.5px] text-muted">
+                {tForm("note")}: {event.note}
+              </span>
+            )}
           </div>
         </div>
       );
@@ -286,11 +323,18 @@ function EventItem({ event }: { event: RunEvent }) {
 export function ActivityFeed({ events, filter, live }: { events: RunEvent[]; filter: Actor | null; live: boolean }) {
   const t = useTranslations("run");
   const items = buildItems(events, filter);
+  // Each form answer is labeled with the form it answers: the latest question before it.
+  const forms = new Map<number, AgentForm>();
+  let lastForm: AgentForm | undefined;
+  for (const e of events) {
+    if (e.type === "question") lastForm = e.question.form;
+    else if (e.type === "answer" && lastForm) forms.set(e.seq, lastForm);
+  }
   if (items.length === 0) return <p className="py-6 text-center text-[13px] text-muted">{t("noActivity")}</p>;
   return (
     <ol className="flex flex-col gap-3.5">
       {items.map((item) => (
-        <li key={item.key}>{item.kind === "tool" ? <ToolLine use={item.use} result={item.result} live={live} /> : <EventItem event={item.event} />}</li>
+        <li key={item.key}>{item.kind === "tool" ? <ToolLine use={item.use} result={item.result} live={live} /> : <EventItem event={item.event} form={forms.get(item.event.seq)} />}</li>
       ))}
     </ol>
   );
