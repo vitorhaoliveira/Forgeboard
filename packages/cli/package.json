@@ -2,6 +2,7 @@
   "name": "forgeboard",
   "version": "1.7.0",
   "description": "A local cockpit for AI coding agents: a crew that builds, checks and reviews in isolated git worktrees, and waits for your merge.",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "forgeboard": "dist/cli.js"

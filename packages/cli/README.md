@@ -40,3 +40,5 @@ It opens http://localhost:4317. Create a workspace with one or more of your repo
 - English (US) and Brazilian Portuguese.
 
 Source, docs and live demo: https://github.com/vitorhaoliveira/Forgeboard
+
+MIT licensed.

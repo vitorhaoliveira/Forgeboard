@@ -13,6 +13,7 @@ One-command install: `npx forgeboard`.
 - The package ships a trimmed Next.js standalone build with its runtime packages included: about 4.4 MB to download, no dependencies to install.
 - **CI** on every pull request and on `main`: typecheck, build the package and smoke-test the installed command.
 - **Publish workflow**: pushing a `v*` tag publishes to npm with provenance, after checking the tag matches the package version.
+- MIT license.
 
 ### Changed
 

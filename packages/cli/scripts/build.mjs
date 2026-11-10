@@ -86,5 +86,7 @@ await import("./forgeboard.js");
 `,
   { mode: 0o755 },
 );
+// npm picks up the license from the package folder.
+cpSync(join(root, "LICENSE"), join(pkgDir, "LICENSE"));
 writeFileSync(join(dist, ".build"), `${pkg.version} ${new Date().toISOString()}\n`);
 console.log(`✓ forgeboard@${pkg.version} built in packages/cli/dist`);

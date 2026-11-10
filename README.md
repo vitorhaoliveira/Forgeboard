@@ -142,3 +142,7 @@ Key server files: `orchestrator.ts` (the Build & Review loop), `prompts.ts` (wha
 - [ ] **v2 — Flow studio**: build your own flows (agents, checks, "ask me" gates, loops, parallel steps), custom agents
 - [ ] **v3 — More agents**: Codex CLI and API-key providers, parallel runs, cost dashboard
 - [ ] **v4 — Routines**: scheduled and reusable tasks
+
+## License
+
+[MIT](LICENSE)
