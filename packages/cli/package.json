@@ -1,0 +1,40 @@
+{
+  "name": "forgeboard",
+  "version": "1.7.0",
+  "description": "A local cockpit for AI coding agents: a crew that builds, checks and reviews in isolated git worktrees, and waits for your merge.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "forgeboard": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.13"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "claude-code",
+    "code-review",
+    "git-worktree",
+    "orchestrator"
+  ],
+  "homepage": "https://github.com/vitorhaoliveira/Forgeboard#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vitorhaoliveira/Forgeboard.git",
+    "directory": "packages/cli"
+  },
+  "bugs": "https://github.com/vitorhaoliveira/Forgeboard/issues",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "esbuild": "0.28.2",
+    "typescript": "^5.9.3"
+  }
+}
