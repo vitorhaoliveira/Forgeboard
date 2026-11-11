@@ -1,14 +1,16 @@
 # Forgeboard
 
-**Your crew of AI coding agents, on your machine.** Describe a task; Forge builds it, the checks run, Hawk reviews it and sends it back until it's right. Agents ask you when they need a decision. You merge when you're happy.
+**Your crew of AI coding agents, on your machine.** Describe a task; Forge builds it, the checks run, Hawk reviews it and sends it back until it's right. Agents ask you when they need a decision. You merge when you're happy. Need a different process? Build your own flow, with your own agents.
 
 ![Forgeboard demo: answer the agent's question, watch the crew build, check and review, then merge](docs/demo.gif)
 
 <sub>The demo above runs in the browser with a simulated crew (`pnpm demo`). See [Live demo](#live-demo).</sub>
 
-> Status: **v1.9**. A conversation with the crew (message it mid-run, "decide and tell me" mode), Codex as a provider, install with `npx forgeboard`, agents ask with forms and editable plans (A2UI), public demo mode, Workspaces per project, built-in "Build & Review" flow, live run view, merge decision, editable crew and house rules, English (US) and Brazilian Portuguese. Next up (v2): design your own flows with drag-and-drop blocks.
+> Status: **v2.0**. Your own flows (builders, reviewers, checks, "Ask me" pauses) and your own agents, a flow per task, a conversation with the crew (message it mid-run, "decide and tell me" mode), Claude Code and Codex as providers, install with `npx forgeboard`, agents ask with forms and editable plans (A2UI), public demo mode, workspaces per project, live run view, merge decision, house rules, English (US) and Brazilian Portuguese. Next up (v2.1): a drag-and-drop canvas for flows.
 
 ## How it works
+
+Every task runs a **flow**. The built-in one, **Build & Review**:
 
 ```
 your task → Forge (builds) → Checks (tests · lint · types) → Hawk (reviews)
@@ -18,9 +20,18 @@ your task → Forge (builds) → Checks (tests · lint · types) → Hawk (revie
                                               You: merge · send back · discard
 ```
 
+- **Make your own flows** in **Flows**, as a list of steps with a live preview. There are four kinds of step:
+  - **agents that build** (edit files);
+  - **agents that review** (read only, and send work back to a builder up to N rounds);
+  - **checks**;
+  - **Ask me** pauses: you continue, or write a note that goes back to the builder before it.
+
+  For example: *Forge → Checks → Hawk ↩ Forge → Scribe (docs) → Ask me*. Pick the flow in the task bar; each workspace has a default.
+- **Make your own agents** in **Crew**. Each gets a name, a role (builds or reviews), the AI that runs it (Claude Code or Codex), a personality and instructions. What an agent may do follows from its role.
+
 - **Every task runs in its own git worktree** (`~/.forgeboard/worktrees/<task>`), on a branch like `fb/add-pagination-ab12c`. Your checkout is never touched until you merge.
-- **Checks are objective.** Forgeboard runs your repo's own commands (detected from `package.json`, editable in Settings) after every build. Hawk can't approve while a check fails.
-- **You talk to the crew.** Each run is a conversation: reply to questions by typing, or message Forge while it works and it picks your message up right away (same session). Prefer fewer interruptions? In **Decide and tell me** mode, Forge goes with its best guess and lists what it decided for you to check.
+- **Checks are objective.** Forgeboard runs your repo's own commands (detected from `package.json`, editable in Settings) wherever the flow has a checks step. A reviewer can't approve while a check fails.
+- **You talk to the crew.** Each run is a conversation: reply to questions by typing, or message the builder while it works and it picks your message up right away (same session). Prefer fewer interruptions? In **Decide and tell me** mode, builders go with their best guess and list what they decided for you to check.
 - **Rich questions.** When several decisions are needed, Forge asks with a small form; for bigger tasks it proposes a plan you can edit before anything is built. Forms use [A2UI](https://a2ui.org/) with a fixed catalog of Forgeboard components, validated on the server and in the browser.
 - **The crew learns.** Answers can be saved as **house rules**, and Hawk suggests rules from what it sees in reviews. Every agent follows them on every task.
 - **One workspace per project.** Group a project's repositories in a workspace with its own crew and house rules (general → workspace → repository). The "All" desk shows what needs you across every workspace.
@@ -88,14 +99,16 @@ The API runs on :4317 and the web app on http://localhost:3000, with hot reload.
 
 ### What agents may do
 
-| Agent | Files | Commands |
+What an agent may do follows from its role, not its name:
+
+| Role | Files | Commands |
 |---|---|---|
-| **Forge** (builder) | edits files in the task's worktree | package managers (`npm`, `pnpm`, `yarn`, `bun`, `npx`, `node`) and read-only git/`ls`; anything else is refused |
-| **Hawk** (reviewer) | read only | none; it gets the check results from Forgeboard |
+| **Builds** (e.g. Forge) | edits files in the task's worktree | package managers (`npm`, `pnpm`, `yarn`, `bun`, `npx`, `node`) and read-only git/`ls`; anything else is refused |
+| **Reviews** (e.g. Hawk) | read only | none (Claude Code runs it without shell or edit tools); it gets the check results from Forgeboard |
 
 Agents never commit, push or touch your branch. Merging is always your click.
 
-With **Codex**, its own sandbox does the isolation: Hawk runs read-only, and Forge can only write inside the task's worktree (with network in Standard, without it in Restricted).
+With **Codex**, its own sandbox does the isolation: reviewers run read-only, and builders can only write inside the task's worktree (with network in Standard, without it in Restricted).
 
 **Standard** (the default) lets Forge run package managers and `node`, which in practice can run any code on your machine. For repositories you don't fully trust, switch the workspace to **Restricted** (workspace settings → Safety): Forge then only edits files and Forgeboard runs the checks. The API is local-only and, with `forgeboard`, needs an access key printed as a link in the terminal. See [SECURITY.md](SECURITY.md) for what is and isn't protected.
 
@@ -129,14 +142,14 @@ packages/
 ### Releasing
 
 1. Bump `version` in `packages/cli/package.json` and add the section to `CHANGELOG.md`.
-2. Merge to `main`, then tag: `git tag v1.9.1 && git push origin v1.9.1`.
+2. Merge to `main`, then tag: `git tag v2.0.1 && git push origin v2.0.1`.
 3. The **Publish to npm** workflow checks the tag matches the version, builds the package and publishes it with npm Trusted Publishing (no token; set up once on npmjs.com under the package's Settings → Trusted Publisher). It then creates the GitHub release, with the version's `CHANGELOG.md` section as notes; the title comes from the section's first line ("Talk to the crew: …" → "v1.9.0 — Talk to the crew").
 
 The very first version was published by hand (`pnpm package`, then `npm publish --access public` in `packages/cli`), since npm only lets you add a trusted publisher to a package that already exists.
 
 To try the package locally: `pnpm package`, then `npm pack` in `packages/cli` and install the `.tgz` anywhere.
 
-Key server files: `orchestrator.ts` (the Build & Review loop), `prompts.ts` (what each agent is told and how its answer is parsed), `git.ts` (worktrees, diff, merge), `checks.ts`.
+Key server files: `orchestrator.ts` (`runFlow`, which runs a task's flow step by step), `prompts.ts` (what each agent is told and how its answer is parsed), `git.ts` (worktrees, diff, merge), `checks.ts`. Flows and their validation (`BUILD_AND_REVIEW`, `validateFlow`) live in `packages/shared`.
 
 ## Roadmap
 
@@ -148,7 +161,9 @@ Key server files: `orchestrator.ts` (the Build & Review loop), `prompts.ts` (wha
 - [x] **v1.7 — One-command install**: `npx forgeboard`, published to npm from a version tag
 - [x] **v1.8 — Codex**: OpenAI's Codex CLI as a provider for any agent, sandboxed
 - [x] **v1.9 — Conversation**: talk to the crew mid-run, reply by typing, "decide and tell me" mode
-- [ ] **v2 — Flow studio**: build your own flows (agents, checks, "ask me" gates, loops, parallel steps), custom agents
+- [x] **v2.0 — Flow studio**: your own flows (builders, reviewers with loops, checks, "Ask me" pauses), your own agents with a role, a flow per task
+- [ ] **v2.1 — Flow canvas**: drag-and-drop editor for flows
+- [ ] **v2.2 — Parallel steps**: run agents side by side in a flow
 - [ ] **v3 — More agents**: API-key providers, parallel runs, cost dashboard
 - [ ] **v4 — Routines**: scheduled and reusable tasks
 
