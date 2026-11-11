@@ -30,7 +30,8 @@ export function QuestionCard({ task, compact, showRepo }: { task: Task; compact?
   const { agentName, refreshTasks, repo } = useAppState();
   const [custom, setCustom] = useState(false);
   const [text, setText] = useState("");
-  const [remember, setRemember] = useState(true);
+  // Off by default: most answers are about this task only. Tick it for real conventions.
+  const [remember, setRemember] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState("");

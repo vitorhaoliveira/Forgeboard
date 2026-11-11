@@ -2,6 +2,12 @@
 
 All notable changes to Forgeboard are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- "Remember as a house rule" on desk question cards now starts unticked. Most answers only matter for that task, and saved rules apply to every future task in the repository; tick it when the answer is a real convention.
+
 ## [1.9.1] — 2026-11-11
 
 Review fixes: found by testing v1.9 with Claude Code.
