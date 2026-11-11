@@ -54,6 +54,9 @@ const FORGE_ALLOWED_TOOLS: Record<ForgeCommands, string[]> = {
   restricted: asTools(READ_ONLY_COMMANDS),
 };
 
+/** Hawk reads files only: no shell and no edits, whatever the model decides. */
+const HAWK_DISALLOWED_TOOLS = ["Bash", "Edit", "Write", "NotebookEdit"];
+
 /** Abort handles for tasks the server is working on right now. */
 const running = new Map<string, AbortController>();
 
@@ -227,6 +230,9 @@ async function forgeStep(taskId: string, mode: ForgeMode, signal: AbortSignal): 
   }
   emit(taskId, { type: "step_done", actor: "forge", summary, costUsd: output.costUsd, durationMs: output.durationMs });
   tasks.update(taskId, { summary });
+  // Messages sent during this step ("at the next pause") go in now, before checks and review,
+  // so Hawk reviews work that already includes them.
+  if (inbox.get(taskId)?.length) return forgeStep(taskId, { kind: "messages" }, signal);
   node(taskId, "forge", "done");
   return "done";
 }
@@ -244,6 +250,15 @@ async function checksStep(taskId: string, signal: AbortSignal): Promise<CheckRes
   tasks.update(taskId, { checks: results });
   node(taskId, "checks", results.every((r) => r.ok) ? "done" : "failed");
   return results;
+}
+
+/** Everything you told the crew after the task started: answers, messages and notes, in order. */
+function yourWords(taskId: string): string[] {
+  return events
+    .list(taskId)
+    .filter((e) => e.actor === "you" && (e.type === "answer" || e.type === "message" || e.type === "text"))
+    .map((e) => ("text" in e ? e.text : ""))
+    .filter((text) => text.trim().length > 0);
 }
 
 async function hawkStep(taskId: string, checks: CheckResult[], signal: AbortSignal): Promise<Verdict> {
@@ -265,9 +280,11 @@ async function hawkStep(taskId: string, checks: CheckResult[], signal: AbortSign
     const diffText = files.map((f) => f.patch).join("");
     const output = await getProvider(agent.provider).run({
       role: "hawk",
-      prompt: hawkPrompt(agent, task, rules.forRepo(repos.get(task.repoId)!), diffText, checks),
+      prompt: hawkPrompt(agent, task, rules.forRepo(repos.get(task.repoId)!), diffText, checks, yourWords(taskId)),
       cwd: worktree,
       permissionMode: "plan",
+      // Plan mode alone doesn't stop the model from running commands (it ran `npm test`).
+      disallowedTools: HAWK_DISALLOWED_TOOLS,
       locale: task.locale,
       round: task.round,
       signal,

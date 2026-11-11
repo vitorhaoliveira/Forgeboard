@@ -14,6 +14,8 @@ export interface StepInput {
   permissionMode: "plan" | "acceptEdits";
   /** Tools the agent may use without asking, e.g. "Bash(npm:*)". */
   allowedTools?: string[];
+  /** Tools the agent can't use at all (Claude Code `--disallowedTools`). */
+  disallowedTools?: string[];
   /** The workspace's setting for what Forge may run (providers with their own sandbox use it). */
   commands?: ForgeCommands;
   /** Called as soon as the provider knows the session id, so an interrupted step can be resumed. */

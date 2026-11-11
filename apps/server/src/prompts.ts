@@ -171,7 +171,14 @@ Address them, without unrelated changes.
 ${forgeEnding(style)}`;
 }
 
-export function hawkPrompt(agent: Agent, task: Task, rules: HouseRule[], diffText: string, checks: CheckResult[]): string {
+export function hawkPrompt(
+  agent: Agent,
+  task: Task,
+  rules: HouseRule[],
+  diffText: string,
+  checks: CheckResult[],
+  yourWords: string[] = [],
+): string {
   const diff =
     diffText.length > MAX_DIFF_CHARS ? `${diffText.slice(0, MAX_DIFF_CHARS)}\n… (diff truncated, read files for the rest)` : diffText;
   const checkLines = checks.length
@@ -182,7 +189,11 @@ export function hawkPrompt(agent: Agent, task: Task, rules: HouseRule[], diffTex
 
 You review, you never modify files. Review the change made for this task:
 ${task.prompt}
-
+${
+  yourWords.length
+    ? `\nWhat the user told the crew after that, in order. These are part of the request: don't flag them as out of scope.\n${yourWords.map((w) => `- ${w}`).join("\n")}\n`
+    : ""
+}
 What the builder says it did:
 ${task.summary ?? "(no summary)"}
 
