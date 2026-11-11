@@ -16,6 +16,8 @@ export interface StepInput {
   allowedTools?: string[];
   /** The workspace's setting for what Forge may run (providers with their own sandbox use it). */
   commands?: ForgeCommands;
+  /** Called as soon as the provider knows the session id, so an interrupted step can be resumed. */
+  onSession?: (id: string) => void;
   /** Continue a previous session instead of starting fresh (after a question). */
   resumeSession?: string;
   locale: Locale;

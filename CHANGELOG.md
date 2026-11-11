@@ -2,6 +2,23 @@
 
 All notable changes to Forgeboard are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.9.0] — 2026-11-11
+
+Talk to the crew: a conversation instead of answer cards.
+
+### Added
+
+- **Conversation on the run screen.** Your task, the agents' messages, questions, decisions and reviews read as one thread, with a message box always at the bottom. A question is a normal message: reply by typing; the agent's options are small suggestions above the box. "Messages only" hides tool calls and checks.
+- **Talk while the crew works.** A message sent while Forge works can interrupt its step ("Now"): Forgeboard stops it and resumes the same session with your message, for Claude Code and Codex. "At the next pause" waits for the step to end instead. During review, a message sends the work back as a note.
+- **"Decide and tell me" mode** (workspace settings → Conversation and doubts). Forge goes with its best guess instead of stopping and lists what it decided; it only stops when a wrong guess would be destructive. The decisions show in the conversation and as a "To check" card on the desk ("Looks good" / "Correct…"), which doesn't block the task.
+- Workspace settings for plans before big tasks, whether messages interrupt by default, and browser notifications when an agent needs you (per browser, only when Forgeboard isn't on screen).
+- Desk question cards have a reply box right in the card, with suggestions and "Open conversation".
+- API: `POST /api/tasks/:id/message` and `POST /api/tasks/:id/assumptions/ack`.
+
+### Fixed
+
+- The machine-readable line of forms (and of the new decisions list) no longer shows up in the agent's message when using Claude Code.
+
 ## [1.8.0] — 2026-11-10
 
 Codex joins the crew.

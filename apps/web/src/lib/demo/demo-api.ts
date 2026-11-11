@@ -355,6 +355,14 @@ function seed(locale: Locale): Store {
   runInstant(pix.id, runSteps(pix.id, pixScenario(L), tr(L, "Checking how payments work today.", "Vendo como os pagamentos funcionam hoje.")), ago(40));
   const api = add(acmeApi, tr(L, "Validate pagination params in the API", "Validar parâmetros de paginação na API"), apiValidationScenario(L), 12);
   runInstant(api.id, runSteps(api.id, apiValidationScenario(L), tr(L, "Looking for routes that read query params.", "Procurando rotas que leem parâmetros.")), ago(12));
+  // This workspace lets Forge decide small things on its own and report them.
+  patchTask(api.id, {
+    assumptions: [
+      tr(L, "An invalid ?page answers 400 with zod's message, like the other routes", "?page inválido responde 400 com a mensagem do zod, como as outras rotas"),
+      tr(L, "At most 100 rows per page, to avoid huge responses", "No máximo 100 linhas por página, para evitar respostas gigantes"),
+    ],
+    assumptionsAck: false,
+  });
 
   // Waiting for an answer.
   const pag = add(acmeWeb, tr(L, "Add pagination to the users table", "Adicionar paginação à tabela de usuários"), paginationScenario(L), 3);
@@ -585,6 +593,25 @@ export const demoApi: Api = {
     st.pending.delete(taskId);
     play(taskId, rest);
     return ok(st.tasks.find((t) => t.id === taskId)!);
+  },
+  message: (taskId, text, delivery) => {
+    const st = s();
+    const task = st.tasks.find((t) => t.id === taskId);
+    if (!task) return fail("Task not found");
+    if (task.status === "waiting") return demoApi.answer(taskId, text, false);
+    if (task.status === "review") return demoApi.sendBack(taskId, text);
+    if (task.status !== "running") return fail("This task has finished. Start a new one to keep going.");
+    emit(taskId, { type: "message", actor: "you", text, delivery });
+    if (delivery === "now") emit(taskId, { type: "steer", actor: "system" });
+    setTimeout(
+      () => emit(taskId, { type: "text", actor: "forge", text: tr(st.locale, `Got it: “${text}”. Taking it into account from here.`, `Entendido: “${text}”. Vou levar isso em conta daqui pra frente.`) }),
+      delivery === "now" ? 900 : 2500,
+    );
+    return ok(task);
+  },
+  ackAssumptions: (taskId) => {
+    if (!s().tasks.some((t) => t.id === taskId)) return fail("Task not found");
+    return ok(patchTask(taskId, { assumptionsAck: true }));
   },
   sendBack: (taskId, notes) => {
     const st = s();

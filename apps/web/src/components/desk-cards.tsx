@@ -119,39 +119,72 @@ export function QuestionCard({ task, compact, showRepo }: { task: Task; compact?
         </span>
         {showRepo && <Chip className="h-[22px] font-mono">{repo(task.repoId)?.name ?? "—"}</Chip>}
         {!compact && (
-          <span className="text-[12.5px] text-muted">
-            · <Link href={`/runs/${task.id}`} className="hover:text-text">{task.title}</Link> · {t("waiting", { time: timeAgo(task.updatedAt, locale) })}
-          </span>
+          <>
+            <span className="text-[12.5px] text-muted">
+              · <Link href={`/runs/${task.id}`} className="hover:text-text">{task.title}</Link> · {t("waiting", { time: timeAgo(task.updatedAt, locale) })}
+            </span>
+            <Link href={`/runs/${task.id}?reply=1`} className="ml-auto text-[12.5px] text-muted hover:text-text">
+              {t("openConversation")} →
+            </Link>
+          </>
         )}
       </div>
-      <h2 className="text-[17px] font-semibold">{q.question}</h2>
-      {form ? (
+      <h2 className="text-base font-semibold">{q.question}</h2>
+      {form && compact ? (
         <div className="pt-2">
           <AgentFormView form={form} ui={q.ui!} busy={busy} onSubmit={submitForm} footer={footer} />
         </div>
+      ) : form ? (
+        <>
+          {q.context && <p className="text-[13.5px] text-muted">{q.context}</p>}
+          <div>
+            <Link href={`/runs/${task.id}`} className={buttonClass("primary")}>
+              {isPlan ? t("seePlan") : t("answerForm", { count: form.fields.length })}
+            </Link>
+          </div>
+        </>
       ) : (
         <>
-      {q.context && <p className="text-[13.5px] text-muted">{q.context}</p>}
-      <div className="flex flex-wrap items-center gap-2">
-        {q.options.map((option, i) => (
-          <Button key={option} variant={i === q.suggested ? "soft" : "secondary"} disabled={busy} onClick={() => answer(option)}>
-            {option}
-            {i === q.suggested && <span className="text-[11px] opacity-80">{t("suggested")}</span>}
-          </Button>
-        ))}
-        {!custom && (
-          <Button onClick={() => setCustom(true)} disabled={busy}>
-            {t("ownWords")}
-          </Button>
-        )}
-        <label className="ml-auto inline-flex items-center gap-2 text-[12.5px] text-muted">
-          <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="accent-accent" />
-          {t("remember")}
-        </label>
-      </div>
+          {q.context && <p className="text-[13.5px] text-muted">{q.context}</p>}
+          <form onSubmit={submitCustom} className="flex gap-2">
+            <label htmlFor={`answer-${task.id}`} className="sr-only">
+              {t("placeholder")}
+            </label>
+            <input
+              id={`answer-${task.id}`}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={t("placeholder")}
+              className="h-9 min-w-0 grow rounded-[9px] border border-border-strong bg-bg px-3 text-[13.5px] outline-none focus:border-text/30"
+            />
+            <Button type="submit" variant="primary" className="h-9" disabled={!text.trim() || busy}>
+              {busy && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
+              {tc("send")}
+            </Button>
+          </form>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {q.options.map((option, i) => (
+              <button
+                key={option}
+                type="button"
+                disabled={busy}
+                onClick={() => answer(option)}
+                className={cn(
+                  "inline-flex h-7 items-center rounded-full border px-2.5 text-[12.5px] transition disabled:opacity-50",
+                  i === q.suggested ? "border-accent/45 bg-accent/[0.07] text-[#fdba74]" : "border-border bg-panel-2 hover:border-border-strong",
+                )}
+              >
+                {option}
+              </button>
+            ))}
+            <label className="ml-auto inline-flex items-center gap-2 text-[12px] text-muted">
+              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="accent-accent" />
+              {t("remember")}
+            </label>
+          </div>
         </>
       )}
-      {custom && (
+      {custom && form && compact && (
         <form onSubmit={submitCustom} className="flex gap-2">
           <label htmlFor={`answer-${task.id}`} className="sr-only">
             {t("placeholder")}
@@ -278,5 +311,55 @@ export function RecentRow({ task }: { task: Task }) {
       <span className="ml-auto shrink-0 text-[12.5px] text-muted">{timeAgo(task.finishedAt ?? task.updatedAt, locale)}</span>
       <span className="w-16 shrink-0 text-right font-mono text-xs text-muted">{formatCost(task.costUsd, locale)}</span>
     </Link>
+  );
+}
+
+/** Tasks with decisions Forge made on its own that you haven't looked at yet. */
+export function toCheck(tasks: Task[]): Task[] {
+  return tasks.filter((x) => (x.assumptions?.length ?? 0) > 0 && !x.assumptionsAck && x.status !== "discarded" && x.status !== "cancelled");
+}
+
+/** "I decided N things for you": doesn't block the task; look, then confirm or correct. */
+export function AssumptionsCard({ task, showRepo }: { task: Task; showRepo?: boolean }) {
+  const t = useTranslations("question");
+  const { agentName, refreshTasks, repo } = useAppState();
+  const [busy, setBusy] = useState(false);
+  const items = task.assumptions ?? [];
+
+  async function ack() {
+    setBusy(true);
+    await api.ackAssumptions(task.id).catch(() => undefined);
+    await refreshTasks();
+    setBusy(false);
+  }
+
+  return (
+    <WorkspaceScope workspaceId={task.workspaceId}>
+      <article className="flex flex-col gap-2.5 rounded-2xl border border-border bg-panel p-4">
+        <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-muted">
+          <Glyph actor="forge" />
+          <span className="font-medium text-accent">{agentName("forge", task.workspaceId)}</span>
+          {showRepo && <Chip className="h-[22px] font-mono">{repo(task.repoId)?.name ?? "—"}</Chip>}
+          <Link href={`/runs/${task.id}`} className="hover:text-text">
+            {task.title}
+          </Link>
+          {task.status === "running" && <span className="text-info">· {t("stillWorking")}</span>}
+        </div>
+        <h3 className="text-[15px] font-medium">{t("decidedCount", { count: items.length })}</h3>
+        <ul className="flex list-disc flex-col gap-1 pl-5 text-[13px]">
+          {items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+        <div className="flex gap-2">
+          <Button onClick={ack} disabled={busy}>
+            {t("looksGood")}
+          </Button>
+          <Link href={`/runs/${task.id}?reply=1`} className={buttonClass("secondary")}>
+            {t("correct")}
+          </Link>
+        </div>
+      </article>
+    </WorkspaceScope>
   );
 }

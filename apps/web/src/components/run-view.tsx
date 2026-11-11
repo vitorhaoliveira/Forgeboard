@@ -12,6 +12,7 @@ import { lastHandBack, nodeStates, runBounds, segments } from "@/lib/run-model";
 import { useTaskStream } from "@/lib/use-task-stream";
 import { cn, formatCost, timeAgo } from "@/lib/utils";
 import { ActivityFeed } from "./activity-feed";
+import { Composer } from "./composer";
 import { QuestionCard } from "./desk-cards";
 import { FlowGraph } from "./flow-graph";
 import { Glyph, useActorName } from "./glyph";
@@ -63,6 +64,10 @@ export function RunView({ taskId }: { taskId: string }) {
     return () => clearTimeout(timer);
   }, [replayAt, allEvents]);
   const [filter, setFilter] = useState<Actor | null>(null);
+  const [messagesOnly, setMessagesOnly] = useState(false);
+  // "Fix…" on the desk opens the run with the message box focused.
+  const [focusReply, setFocusReply] = useState(false);
+  useEffect(() => setFocusReply(new URLSearchParams(window.location.search).has("reply")), []);
   const [busy, setBusy] = useState<"stop" | "discard" | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const feedRef = useRef<HTMLDivElement>(null);
@@ -195,7 +200,7 @@ export function RunView({ taskId }: { taskId: string }) {
               onSelect={(a) => setFilter((cur) => (cur === a ? null : a))}
             />
           </div>
-          {task.status === "waiting" && (
+          {task.status === "waiting" && task.question?.form && task.question.ui && (
             <div className="px-6 pb-6">
               <div className="mx-auto max-w-[760px]">
                 <QuestionCard task={task} compact />
@@ -222,6 +227,17 @@ export function RunView({ taskId }: { taskId: string }) {
                 {f ? name(f) : t("everything")}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => setMessagesOnly((v) => !v)}
+              aria-pressed={messagesOnly}
+              className={cn(
+                "ml-auto inline-flex h-7 items-center rounded-full border px-2.5 text-xs",
+                messagesOnly ? "border-border-strong bg-panel-2 text-text" : "border-transparent text-muted hover:text-text",
+              )}
+            >
+              {t("messagesOnly")}
+            </button>
           </nav>
           <div
             ref={feedRef}
@@ -231,11 +247,13 @@ export function RunView({ taskId }: { taskId: string }) {
             }}
             className="min-h-0 grow overflow-y-auto px-4 py-4"
           >
-            <div className="mb-4 rounded-[10px] border border-border bg-panel-2 px-3.5 py-2.5 text-[13px] whitespace-pre-wrap">{task.prompt}</div>
-            <ActivityFeed events={events} filter={filter} live={live} />
+            <div className="mb-4 flex justify-end pl-10">
+              <div className="rounded-xl border border-border-strong bg-[#17171a] px-3 py-2 text-[13.5px] whitespace-pre-wrap">{task.prompt}</div>
+            </div>
+            <ActivityFeed events={events} filter={filter} live={live} messagesOnly={messagesOnly} />
             {task.error && <p className="mt-3 text-[13px] text-danger">{task.error}</p>}
           </div>
-          <div className="border-t border-border px-4 py-3 text-xs text-muted">{t("messageSoon")}</div>
+          {replayAt === null && <Composer task={task} autoFocus={focusReply} />}
         </aside>
       </div>
     </div>

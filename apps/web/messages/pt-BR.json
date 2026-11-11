@@ -62,15 +62,23 @@
     "recent": "RECENTES",
     "nothingWaiting": "Quando um agente tiver uma pergunta ou terminar o trabalho, aparece aqui.",
     "nobodyWorking": "Ninguém está trabalhando agora.",
-    "startHint": "Escreva uma tarefa na barra acima e aperte Enter. O Forge constrói, o Hawk revisa e você decide."
+    "startHint": "Escreva uma tarefa na barra acima e aperte Enter. O Forge constrói, o Hawk revisa e você decide.",
+    "toCheck": "Para conferir · não bloqueia"
   },
   "question": {
     "title": "{name} tem uma pergunta",
     "waiting": "esperando {time}",
     "suggested": "sugerido",
     "ownWords": "Responder com minhas palavras…",
-    "placeholder": "Sua resposta",
-    "remember": "Lembrar como regra da casa"
+    "placeholder": "Responder…",
+    "remember": "Lembrar como regra da casa",
+    "openConversation": "Abrir conversa",
+    "seePlan": "Ver o plano",
+    "answerForm": "Responder ({count, plural, one {# pergunta} other {# perguntas}})",
+    "stillWorking": "continua trabalhando",
+    "decidedCount": "Decidi {count, plural, one {# coisa} other {# coisas}} por você",
+    "looksGood": "Está ótimo",
+    "correct": "Corrigir…"
   },
   "form": {
     "formTitle": "{name} tem {count, plural, one {# pergunta} other {# perguntas}}",
@@ -147,7 +155,14 @@
     "started": "começou {time}",
     "notFound": "Tarefa não encontrada.",
     "replay": "Reproduzir",
-    "replaying": "Reproduzindo…"
+    "replaying": "Reproduzindo…",
+    "sentBack": "Devolvido com observação",
+    "deliveredNow": "Entregue agora · interrompeu a etapa",
+    "deliveredLater": "Chega ao Forge na próxima etapa dele",
+    "steered": "O {name} parou e retomou a mesma sessão com a sua mensagem",
+    "decidedForYou": "Decidi por você",
+    "decidedHint": "Responda aqui se quiser mudar algo.",
+    "messagesOnly": "Só mensagens"
   },
   "decide": {
     "back": "← Mesa",
@@ -333,10 +348,39 @@
     "cmdStandardHint": "Edita arquivos e roda npm, pnpm, yarn, bun, npx e node para instalar e testar. Na prática, isso permite executar qualquer código na sua máquina: use em repositórios em que você confia.",
     "cmdRestricted": "Restrito",
     "cmdRestrictedHint": "Só edita arquivos e usa git e ls para leitura. Não roda comandos: o Forgeboard roda as verificações depois e devolve as falhas.",
-    "safetyNote": "O Hawk nunca altera arquivos nem roda comandos, em nenhum dos modos. Com o Codex, o sandbox dele também impede o Forge de escrever fora da pasta da tarefa; no Restrito, ele fica sem internet (os comandos ainda rodam, isolados)."
+    "safetyNote": "O Hawk nunca altera arquivos nem roda comandos, em nenhum dos modos. Com o Codex, o sandbox dele também impede o Forge de escrever fora da pasta da tarefa; no Restrito, ele fica sem internet (os comandos ainda rodam, isolados).",
+    "conversation": "Conversa e dúvidas",
+    "askTitle": "Quando o agente tiver uma dúvida",
+    "askHint": "Vale para todas as tarefas deste workspace.",
+    "askAsk": "Perguntar antes",
+    "askAskHint": "Para e espera a sua resposta. Bom quando errar custa caro, como em mudanças de dados ou de API pública.",
+    "askDecide": "Decidir e me avisar",
+    "askDecideHint": "Segue com o melhor palpite e lista o que decidiu. Você corrige pela conversa ou na revisão. Só para quando errar seria destrutivo.",
+    "recommended": "recomendado",
+    "planFirst": "{name} mostra um plano antes de tarefas grandes",
+    "planFirstHint": "Quando a tarefa toca vários arquivos ou camadas, as etapas aparecem para você ajustar antes de começar.",
+    "interrupt": "Mensagens no meio do trabalho interrompem",
+    "interruptHint": "Sua mensagem entra na hora: o agente para a etapa e retoma com ela. Desligado, ela espera a próxima pausa. Dá para trocar em cada mensagem.",
+    "notify": "Avisar no navegador quando precisarem de mim",
+    "notifyHint": "Notificação do sistema quando um agente pergunta ou termina a revisão, se o Forgeboard não estiver na tela. Vale para este navegador.",
+    "notifyUnsupported": "Este navegador não permite notificações."
   },
   "demo": {
     "banner": "Demo ao vivo: uma equipe simulada roda no seu navegador. Nenhuma IA é chamada e nenhum repositório real é tocado.",
     "github": "Rodar na sua máquina →"
+  },
+  "composer2": {
+    "finished": "Esta tarefa terminou. Para continuar, comece uma nova.",
+    "placeholderWaiting": "Responda ou diga qualquer coisa ao {name}…",
+    "placeholderReview": "Peça um ajuste ao {name}…",
+    "placeholderRunning": "Mensagem para o {name}…",
+    "suggestions": "Sugestões de resposta",
+    "formHint": "Responda pelo formulário, ou escreva aqui com as suas palavras.",
+    "delivery": "Quando entregar",
+    "now": "Agora (interrompe)",
+    "later": "Na próxima pausa",
+    "enterHint": "Enter envia · Shift+Enter quebra linha",
+    "send": "Enviar",
+    "reviewHint": "Sua mensagem devolve o trabalho ao Forge como observação, para outra rodada."
   }
 }

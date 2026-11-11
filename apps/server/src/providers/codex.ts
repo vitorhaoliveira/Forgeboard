@@ -107,6 +107,7 @@ export const codexProvider: Provider = {
         }
         if (event.type === "thread.started") {
           sessionId = event.thread_id;
+          input.onSession?.(event.thread_id);
         } else if (event.type === "turn.completed") {
           completed = true;
         } else if (event.type === "turn.failed") {

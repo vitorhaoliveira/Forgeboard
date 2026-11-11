@@ -57,7 +57,10 @@ function toolSummary(use: ToolUse): string {
 }
 
 /** Pairs tool calls with results and drops events that would only repeat something. */
-function buildItems(events: RunEvent[], filter: Actor | null): Item[] {
+/** Events that read as conversation (what people and agents said). */
+const MESSAGE_TYPES = new Set(["text", "step_done", "question", "answer", "message", "steer", "assumptions", "verdict", "merged", "error"]);
+
+function buildItems(events: RunEvent[], filter: Actor | null, messagesOnly = false): Item[] {
   const items: Item[] = [];
   const toolIndex = new Map<string, number>();
   let lastText: Partial<Record<Actor, string>> = {};
@@ -66,6 +69,7 @@ function buildItems(events: RunEvent[], filter: Actor | null): Item[] {
     const key = String(e.seq);
     if (e.type === "node" || e.type === "status") continue;
     if (filter && e.type !== "round" && e.actor !== filter) continue;
+    if (messagesOnly && !MESSAGE_TYPES.has(e.type)) continue;
 
     if (e.type === "tool_use") {
       toolIndex.set(e.toolUseId, items.length);
@@ -203,6 +207,16 @@ function AnswerChips({ data, form }: { data: FormAnswer; form?: AgentForm }) {
   );
 }
 
+/** What you said, on the right like a chat. */
+function YouBubble({ children, caption }: { children: React.ReactNode; caption?: React.ReactNode }) {
+  return (
+    <div className="flex flex-col items-end gap-1 pl-10">
+      <div className="max-w-full rounded-xl border border-border-strong bg-[#17171a] px-3 py-2 text-[13.5px] leading-relaxed">{children}</div>
+      {caption && <div className="text-[11.5px] text-muted">{caption}</div>}
+    </div>
+  );
+}
+
 function EventItem({ event, form }: { event: RunEvent; form?: AgentForm }) {
   const t = useTranslations("run");
   const tf = useTranslations("flow");
@@ -221,11 +235,19 @@ function EventItem({ event, form }: { event: RunEvent; form?: AgentForm }) {
         </div>
       );
     case "text":
+      if (event.actor === "you") {
+        return (
+          <YouBubble caption={t("sentBack")}>
+            <div className="md">
+              <Markdown>{event.text}</Markdown>
+            </div>
+          </YouBubble>
+        );
+      }
       return (
         <div className="flex gap-2.5">
           <Glyph actor={event.actor} />
           <div className="min-w-0 grow">
-            {event.actor === "you" && <div className="mb-0.5 text-xs text-muted">{t("youSaid")}</div>}
             <div className="md pt-0.5 text-[13.5px] leading-relaxed">
               <Markdown>{event.text}</Markdown>
             </div>
@@ -274,21 +296,47 @@ function EventItem({ event, form }: { event: RunEvent; form?: AgentForm }) {
       );
     case "answer":
       return (
-        <div className="flex gap-2.5">
-          <Glyph actor="you" />
-          <div className="flex min-w-0 grow flex-wrap items-center gap-1.5 pt-0.5 text-[13px]">
-            <span className="text-muted">{t("youAnswered")}:</span>
-            {event.data ? (
+        <YouBubble caption={event.remember ? t("savedAsRule") : undefined}>
+          {event.data ? (
+            <span className="flex flex-wrap gap-1.5">
               <AnswerChips data={event.data} form={form} />
-            ) : (
-              <span className="font-medium">{event.text}</span>
-            )}
-            {event.remember && <Chip tone="accent">{t("savedAsRule")}</Chip>}
-            {event.note && (
-              <span className="basis-full text-[12.5px] text-muted">
-                {tForm("note")}: {event.note}
-              </span>
-            )}
+            </span>
+          ) : (
+            event.text
+          )}
+          {event.note && (
+            <span className="mt-1 block text-[12.5px] text-muted">
+              {tForm("note")}: {event.note}
+            </span>
+          )}
+        </YouBubble>
+      );
+    case "message":
+      return (
+        <YouBubble caption={event.delivery === "now" ? t("deliveredNow") : t("deliveredLater")}>
+          <span className="whitespace-pre-wrap">{event.text}</span>
+        </YouBubble>
+      );
+    case "steer":
+      return (
+        <div className="flex items-center gap-3 py-0.5 text-[11.5px] text-muted">
+          <span className="h-px grow bg-border" />
+          {t("steered", { name: name("forge") })}
+          <span className="h-px grow bg-border" />
+        </div>
+      );
+    case "assumptions":
+      return (
+        <div className="flex gap-2.5">
+          <Glyph actor={event.actor} />
+          <div className="min-w-0 grow rounded-[10px] border border-info/30 bg-info/5 px-3 py-2.5 text-[13px]">
+            <div className="mb-1 text-xs font-medium text-info">{t("decidedForYou")}</div>
+            <ul className="flex list-disc flex-col gap-0.5 pl-4">
+              {event.items.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+            <div className="mt-1.5 text-[12px] text-muted">{t("decidedHint")}</div>
           </div>
         </div>
       );
@@ -320,9 +368,9 @@ function EventItem({ event, form }: { event: RunEvent; form?: AgentForm }) {
   }
 }
 
-export function ActivityFeed({ events, filter, live }: { events: RunEvent[]; filter: Actor | null; live: boolean }) {
+export function ActivityFeed({ events, filter, live, messagesOnly }: { events: RunEvent[]; filter: Actor | null; live: boolean; messagesOnly?: boolean }) {
   const t = useTranslations("run");
-  const items = buildItems(events, filter);
+  const items = buildItems(events, filter, messagesOnly);
   // Each form answer is labeled with the form it answers: the latest question before it.
   const forms = new Map<number, AgentForm>();
   let lastForm: AgentForm | undefined;

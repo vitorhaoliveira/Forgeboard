@@ -67,6 +67,12 @@ export const WORKSPACE_COLORS: WorkspaceColor[] = ["info", "success", "violet", 
  */
 export type ForgeCommands = "standard" | "restricted";
 
+/** What agents do when a decision isn't clear: stop and ask, or decide and report it. */
+export type AskMode = "ask" | "decide";
+
+/** How a message reaches an agent that is working: interrupt the current step, or wait for its end. */
+export type MessageDelivery = "now" | "later";
+
 export interface Workspace {
   id: string;
   name: string;
@@ -76,6 +82,12 @@ export interface Workspace {
   crewMode: "default" | "custom";
   /** Missing on workspaces created before v1.7.1, which means "standard". */
   forgeCommands?: ForgeCommands;
+  /** Missing means "ask" (the behavior before v1.9). */
+  askMode?: AskMode;
+  /** Ask for an editable plan before big tasks. Missing means true. */
+  planFirst?: boolean;
+  /** Default delivery for messages sent while an agent works. Missing means "now". */
+  messageDelivery?: MessageDelivery;
   archived: boolean;
   createdAt: string;
 }
@@ -196,6 +208,10 @@ export interface Task {
   checks: CheckResult[] | null;
   /** What Forge said it did in its last round. */
   summary: string | null;
+  /** Decisions Forge made on its own in "decide" mode, for you to check. */
+  assumptions?: string[];
+  /** True once you looked at the assumptions ("Looks good"). */
+  assumptionsAck?: boolean;
   costUsd: number;
   error: string | null;
   createdAt: string;
@@ -219,6 +235,12 @@ export type RunEventPayload =
   | WithActor<{ type: "handoff"; to: Actor; label: string }>
   | WithActor<{ type: "step_done"; summary: string; costUsd: number | null; durationMs: number | null }>
   | WithActor<{ type: "merged"; branch: string }>
+  /** A message you sent while the crew worked. */
+  | WithActor<{ type: "message"; text: string; delivery: MessageDelivery }>
+  /** Forge stopped its step to read your message and resumed the same session. */
+  | WithActor<{ type: "steer" }>
+  /** Decisions Forge made without asking ("decide" mode). */
+  | WithActor<{ type: "assumptions"; items: string[] }>
   | WithActor<{ type: "error"; message: string }>;
 
 export type RunEvent = RunEventPayload & {
