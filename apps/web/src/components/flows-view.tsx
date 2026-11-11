@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { ArrowDown, ArrowUp, Check, Copy, Loader2, MessageCircleQuestion, Pencil, Plus, Trash2, X } from "lucide-react";
 import {
   BUILD_AND_REVIEW,
+  LEAD_DECIDES_ID,
   MAX_FLOW_ROUNDS,
   MAX_FLOW_STEPS,
   validateFlow,
@@ -15,7 +16,7 @@ import {
 } from "@forgeboard/shared";
 import { api } from "@/lib/api";
 import { useAppState } from "@/lib/app-state";
-import { roleOfIn, sendBackIndex } from "@/lib/flow-view";
+import { roleOfIn, sendBackIndex, stepGlyph } from "@/lib/flow-view";
 import { idleStates } from "@/lib/run-model";
 import { cn } from "@/lib/utils";
 import { FlowGraph, useFlowName } from "./flow-graph";
@@ -102,8 +103,10 @@ function FlowRow({ flow, onEdit, onDuplicate }: { flow: Flow; onEdit: () => void
             ))}
         </span>
       </div>
-      {(flow.builtIn ? t("builtInDescription") : flow.description) && (
-        <p className="text-[13px] text-muted">{flow.builtIn ? t("builtInDescription") : flow.description}</p>
+      {(flow.builtIn || flow.description) && (
+        <p className="text-[13px] text-muted">
+          {!flow.builtIn ? flow.description : flow.id === LEAD_DECIDES_ID ? t("leadDescription") : t("builtInDescription")}
+        </p>
       )}
       <StepChain steps={flow.steps} />
       {error && <p className="text-xs text-danger">{error}</p>}
@@ -118,7 +121,7 @@ function StepChain({ steps }: { steps: FlowStep[] }) {
       {steps.map((step, i) => (
         <Fragment key={step.id}>
           {i > 0 && <span className="h-0.5 w-3.5 bg-border-strong" />}
-          <Glyph actor={step.type === "agent" ? step.agentId : step.type === "checks" ? "checks" : "you"} size={22} />
+          <Glyph actor={stepGlyph(step)} size={22} />
         </Fragment>
       ))}
     </span>
@@ -155,6 +158,8 @@ function FlowEditor({ initial, flowId, onDone }: { initial: FlowInput; flowId: s
     setSteps(steps.filter((_, j) => j !== i).map((s) => (s.type === "agent" && s.sendBackTo === gone ? { ...s, sendBackTo: undefined } : s)));
   };
   const add = (step: FlowStep) => setSteps([...steps, step]);
+  // A lead plans the rest: a flow with a lead step has no other steps.
+  const hasLead = steps.some((s) => s.type === "lead");
   const firstOf = (role: "builder" | "reviewer") => crew.find((a) => a.role === role)?.id ?? crew[0]?.id ?? "forge";
 
   async function save() {
@@ -229,7 +234,7 @@ function FlowEditor({ initial, flowId, onDone }: { initial: FlowInput; flowId: s
                       className="h-8 rounded-lg border border-border bg-panel-2 px-2 text-[13px] outline-none"
                     >
                       {!crew.some((a) => a.id === step.agentId) && <option value={step.agentId}>{name(step.agentId)}</option>}
-                      {crew.map((a) => (
+                      {crew.filter((a) => a.role !== "lead").map((a) => (
                         <option key={a.id} value={a.id}>
                           {a.name} · {a.role === "builder" ? t("builds") : t("reviews")}
                         </option>
@@ -274,13 +279,19 @@ function FlowEditor({ initial, flowId, onDone }: { initial: FlowInput; flowId: s
                       </>
                     )}
                   </>
+                ) : step.type === "lead" ? (
+                  <>
+                    <Glyph actor={step.agentId} size={24} />
+                    <span className="text-[13px]">{name(step.agentId)}</span>
+                    <span className="text-[12.5px] text-muted">{t("leadHint")}</span>
+                  </>
                 ) : step.type === "checks" ? (
                   <>
                     <Glyph actor="checks" size={24} />
                     <span className="text-[13px]">{t("checks")}</span>
                     <span className="text-[12.5px] text-muted">{t("checksHint")}</span>
                   </>
-                ) : (
+                ) : step.type === "ask" ? (
                   <>
                     <span className="grid size-6 place-items-center rounded-lg border border-border bg-panel-2 text-violet">
                       <MessageCircleQuestion className="size-3.5" aria-hidden="true" />
@@ -295,7 +306,7 @@ function FlowEditor({ initial, flowId, onDone }: { initial: FlowInput; flowId: s
                       className="h-8 min-w-[200px] grow rounded-lg border border-border bg-panel-2 px-2 text-[13px] outline-none"
                     />
                   </>
-                )}
+                ) : null}
                 <span className="ml-auto flex gap-0.5">
                   <Button variant="ghost" aria-label={t("moveUp")} onClick={() => move(i, -1)} disabled={i === 0} className="px-1.5">
                     <ArrowUp className="size-3.5" aria-hidden="true" />
@@ -312,19 +323,19 @@ function FlowEditor({ initial, flowId, onDone }: { initial: FlowInput; flowId: s
           })}
         </ol>
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => add({ id: newId("builder"), type: "agent", agentId: firstOf("builder") })} disabled={steps.length >= MAX_FLOW_STEPS}>
+          <Button onClick={() => add({ id: newId("builder"), type: "agent", agentId: firstOf("builder") })} disabled={steps.length >= MAX_FLOW_STEPS || hasLead}>
             <Plus className="size-3.5" aria-hidden="true" />
             {t("addBuilder")}
           </Button>
-          <Button onClick={() => add({ id: newId("reviewer"), type: "agent", agentId: firstOf("reviewer") })} disabled={steps.length >= MAX_FLOW_STEPS}>
+          <Button onClick={() => add({ id: newId("reviewer"), type: "agent", agentId: firstOf("reviewer") })} disabled={steps.length >= MAX_FLOW_STEPS || hasLead}>
             <Plus className="size-3.5" aria-hidden="true" />
             {t("addReviewer")}
           </Button>
-          <Button onClick={() => add({ id: newId("checks"), type: "checks" })} disabled={steps.length >= MAX_FLOW_STEPS}>
+          <Button onClick={() => add({ id: newId("checks"), type: "checks" })} disabled={steps.length >= MAX_FLOW_STEPS || hasLead}>
             <Plus className="size-3.5" aria-hidden="true" />
             {t("addChecks")}
           </Button>
-          <Button onClick={() => add({ id: newId("ask"), type: "ask" })} disabled={steps.length >= MAX_FLOW_STEPS}>
+          <Button onClick={() => add({ id: newId("ask"), type: "ask" })} disabled={steps.length >= MAX_FLOW_STEPS || hasLead}>
             <Plus className="size-3.5" aria-hidden="true" />
             {t("addAsk")}
           </Button>

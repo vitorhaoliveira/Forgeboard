@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 const FIXED_COLOR: Record<string, string> = {
   forge: "text-accent",
   hawk: "text-info",
+  lead: "text-pink",
   checks: "text-muted",
   you: "text-violet",
   system: "text-muted",
@@ -16,7 +17,7 @@ const FIXED_COLOR: Record<string, string> = {
 
 /** Built-in agents and system actors have their own color; agents you create are colored by role. */
 export function actorColor(actor: Actor, role?: AgentRole): string {
-  return FIXED_COLOR[actor] ?? (role === "reviewer" ? "text-success" : "text-warning");
+  return FIXED_COLOR[actor] ?? (role === "reviewer" ? "text-success" : role === "lead" ? "text-pink" : "text-warning");
 }
 
 function isSystemActor(actor: Actor): actor is (typeof SYSTEM_ACTORS)[number] {

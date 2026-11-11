@@ -35,14 +35,14 @@ const toml = (value: string | boolean) => (typeof value === "boolean" ? String(v
 
 /**
  * Codex's own sandbox does the isolation:
- * - Reviewers (Hawk) work read-only.
+ * - Reviewers (Hawk) and leads work read-only.
  * - Builders (Forge) may write only inside the task's worktree. "standard" adds network (to install packages);
  *   "restricted" keeps it off.
  */
 export function codexArgs(input: StepInput): string[] {
   const settings: [string, string | boolean][] = [
     ["approval_policy", "never"],
-    ["sandbox_mode", input.role === "reviewer" ? "read-only" : "workspace-write"],
+    ["sandbox_mode", input.role === "builder" ? "workspace-write" : "read-only"],
   ];
   if (input.role === "builder") settings.push(["sandbox_workspace_write.network_access", input.commands !== "restricted"]);
   const flags = ["--json", ...settings.flatMap(([k, v]) => ["-c", `${k}=${toml(v)}`])];

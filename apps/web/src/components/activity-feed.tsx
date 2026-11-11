@@ -19,7 +19,8 @@ import {
   XCircle,
   type LucideIcon,
 } from "lucide-react";
-import type { Actor, AgentForm, CheckResult, FormAnswer, PlanStep, RunEvent, Verdict } from "@forgeboard/shared";
+import type { Actor, AgentForm, CheckResult, FlowStep, FormAnswer, PlanStep, RunEvent, Verdict } from "@forgeboard/shared";
+import { stepGlyph } from "@/lib/flow-view";
 import { cleanAgentText } from "@/lib/run-model";
 import { cn, formatDuration, relativePath } from "@/lib/utils";
 import { Glyph, useActorName } from "./glyph";
@@ -58,7 +59,7 @@ function toolSummary(use: ToolUse): string {
 
 /** Pairs tool calls with results and drops events that would only repeat something. */
 /** Events that read as conversation (what people and agents said). */
-const MESSAGE_TYPES = new Set(["text", "step_done", "question", "answer", "message", "steer", "assumptions", "verdict", "merged", "error"]);
+const MESSAGE_TYPES = new Set(["text", "step_done", "question", "answer", "message", "steer", "assumptions", "plan", "verdict", "merged", "error"]);
 
 function buildItems(events: RunEvent[], filter: Actor | null, messagesOnly = false): Item[] {
   const items: Item[] = [];
@@ -217,6 +218,35 @@ function YouBubble({ children, caption }: { children: React.ReactNode; caption?:
   );
 }
 
+/** The steps a lead planned, each with its agent and why. */
+export function PlanSteps({ steps, reasons }: { steps: FlowStep[]; reasons: Record<string, string> }) {
+  const tf = useTranslations("flow");
+  const tr = useTranslations("run");
+  const name = useActorName();
+  return (
+    <ol className="flex flex-col gap-1.5">
+      {steps
+        .filter((s) => s.type !== "lead")
+        .map((s, i) => (
+          <li key={s.id} className="flex items-start gap-2">
+            <span className="mt-0.5 w-4 shrink-0 text-right font-mono text-[11px] text-muted">{i + 1}</span>
+            <Glyph actor={stepGlyph(s)} size={18} className="mt-px rounded" />
+            <span className="min-w-0">
+              <span className="font-medium">{s.type === "agent" ? name(s.agentId) : s.type === "checks" ? tf("checks") : tf("ask")}</span>
+              {s.type === "agent" && s.sendBackTo && (
+                <span className="text-muted">
+                  {" "}
+                  {tr("sendsBackTo", { name: name((steps.find((x) => x.id === s.sendBackTo) as { agentId?: string } | undefined)?.agentId ?? "") })}
+                </span>
+              )}
+              {reasons[s.id] && <span className="text-muted"> · {reasons[s.id]}</span>}
+            </span>
+          </li>
+        ))}
+    </ol>
+  );
+}
+
 function EventItem({ event, form }: { event: RunEvent; form?: AgentForm }) {
   const t = useTranslations("run");
   const tf = useTranslations("flow");
@@ -323,6 +353,17 @@ function EventItem({ event, form }: { event: RunEvent; form?: AgentForm }) {
           <span className="h-px grow bg-border" />
           {t("steered", { name: name(event.agentId ?? "forge") })}
           <span className="h-px grow bg-border" />
+        </div>
+      );
+    case "plan":
+      return (
+        <div className="flex gap-2.5">
+          <Glyph actor={event.actor} />
+          <div className="min-w-0 grow rounded-[10px] border border-pink/35 bg-pink/5 px-3 py-2.5 text-[13px]">
+            <div className="mb-1 text-xs font-medium text-pink">{t("planTitle", { name: name(event.actor) })}</div>
+            {event.summary && <p className="mb-2">{event.summary}</p>}
+            <PlanSteps steps={event.steps} reasons={event.reasons} />
+          </div>
         </div>
       );
     case "assumptions":

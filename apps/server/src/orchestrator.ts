@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { nanoid } from "nanoid";
 import { compileForm, sanitizeAnswer, validateUi } from "@forgeboard/shared/a2ui";
-import { BUILD_AND_REVIEW } from "@forgeboard/shared";
+import { BUILD_AND_REVIEW, MAX_PLAN_REVISIONS, validateFlow } from "@forgeboard/shared";
 import type {
   Actor,
   Agent,
@@ -34,9 +34,11 @@ import {
   forgeStartPrompt,
   type ForgeStyle,
   hawkPrompt,
+  leadPrompt,
   messagesNote,
   parseAssumptions,
   parseForm,
+  parsePlan,
   parseQuestion,
   parseVerdict,
   stripQuestion,
@@ -395,6 +397,17 @@ async function runFlow(taskId: string, from: string | number, firstMode: Builder
       return;
     }
 
+    if (step.type === "lead") {
+      await leadStep(taskId, step, null, signal);
+      // "Ask first": you see the plan before anyone works. "Decide and tell me": it runs.
+      if (styleFor(task.workspaceId).askMode === "ask") {
+        askPlanApproval(taskId, step);
+        return;
+      }
+      // The task's flow now has the planned steps: read it again from the next step.
+      return runFlow(taskId, i + 1, { kind: "start" }, signal);
+    }
+
     if (step.type === "checks") {
       checks = await checksStep(taskId, step.id, builder?.id ?? "system", signal);
       i++;
@@ -440,6 +453,130 @@ async function runFlow(taskId: string, from: string | number, firstMode: Builder
 }
 
 const CONTINUE = { "pt-BR": "Continuar", "en-US": "Continue" } as const;
+const APPROVE_PLAN = { "pt-BR": "Aprovar plano", "en-US": "Approve plan" } as const;
+
+type LeadFlowStep = Extract<FlowStep, { type: "lead" }>;
+
+/** Every agent a flow step could use in a workspace: its own crew, then the default crew. */
+function teamFor(workspaceId: string): Agent[] {
+  const ids = [...new Set([...agents.forWorkspace(workspaceId), ...agents.defaults()].map((a) => a.id))];
+  return ids.map((id) => agents.forFlow(workspaceId, id)!).filter(Boolean);
+}
+
+/**
+ * Runs the lead: it reads the task and the team and picks the steps. The task's copy of the flow
+ * becomes the lead step followed by the plan. A plan that doesn't fit falls back to Build & Review.
+ */
+async function leadStep(taskId: string, step: LeadFlowStep, replan: { note: string } | null, signal: AbortSignal): Promise<void> {
+  const task = tasks.get(taskId)!;
+  const { worktree } = requireWorktree(taskId);
+  const lead = agents.forStep(task.workspaceId, step.agentId);
+  const repo = repos.get(task.repoId)!;
+  const team = teamFor(task.workspaceId).filter((a): a is Agent & { role: "builder" | "reviewer" } => a.role !== "lead");
+  const pt = task.locale === "pt-BR";
+  const nameOf = (s: FlowStep) =>
+    s.type === "agent" ? agents.forFlow(task.workspaceId, s.agentId)?.name ?? s.agentId : s.type === "checks" ? (pt ? "Verificações" : "Checks") : pt ? "Pausa" : "Pause";
+  const previous = replan
+    ? flowOf(task)
+        .steps.filter((s) => s.type !== "lead")
+        .map((s) => {
+          const back = s.type === "agent" && s.sendBackTo ? flowOf(task).steps.find((x) => x.id === s.sendBackTo) : undefined;
+          const backText = back ? ` (sends back to ${nameOf(back)})` : "";
+          return `- ${nameOf(s)}${backText}${task.plan?.reasons[s.id] ? `: ${task.plan.reasons[s.id]}` : ""}`;
+        })
+        .join("\n")
+    : "";
+
+  node(taskId, step.id, "active");
+  const output = await getProvider(lead.provider).run({
+    role: "lead",
+    prompt: leadPrompt(
+      lead,
+      task,
+      rules.forRepo(repo),
+      team.map((a) => ({ id: a.id, name: a.name, role: a.role, instructions: a.instructions })),
+      repo.checks.map((c) => c.name),
+      replan ? { note: replan.note, previous } : undefined,
+    ),
+    cwd: worktree,
+    // A lead only reads, like a reviewer.
+    permissionMode: "plan",
+    disallowedTools: REVIEWER_DISALLOWED_TOOLS,
+    locale: task.locale,
+    round: task.round,
+    signal,
+    emit: activityEmitter(taskId, lead.id),
+  });
+  addCost(taskId, output.costUsd);
+
+  const parsed = parsePlan(output.text);
+  const roleOf = (id: string) => {
+    const role = team.find((a) => a.id === id)?.role;
+    return role;
+  };
+  const problems = parsed && parsed.steps.length ? validateFlow({ name: "plan", steps: parsed.steps }, roleOf) : null;
+  const usable = parsed && problems && problems.length === 0;
+  if (!usable) console.warn(`[forgeboard] lead plan for ${taskId} not usable:`, problems ?? "no plan line");
+  const steps = usable ? parsed.steps : BUILD_AND_REVIEW.steps;
+  const reasons = usable ? parsed.reasons : {};
+  const summary = usable
+    ? parsed.summary
+    : pt
+      ? `O plano do ${lead.name} não deu para usar, então segui com Construir e revisar.`
+      : `${lead.name}'s plan couldn't be used, so this runs Build & Review.`;
+
+  const current = tasks.get(taskId)!;
+  tasks.update(taskId, {
+    flow: { ...flowOf(current), steps: [step, ...steps] },
+    plan: { by: lead.id, summary, reasons, revisions: replan ? (current.plan?.revisions ?? 0) + 1 : 0 },
+  });
+  emit(taskId, { type: "plan", actor: lead.id, summary, steps, reasons });
+  node(taskId, step.id, "done");
+}
+
+/** "Ask first": the plan waits for you. Its first option approves it; anything you write asks for another plan. */
+function askPlanApproval(taskId: string, step: LeadFlowStep): void {
+  const task = tasks.get(taskId)!;
+  const lead = agents.forStep(task.workspaceId, step.agentId);
+  const pt = task.locale === "pt-BR";
+  const question: AgentQuestion = {
+    question: pt ? `Plano do ${lead.name}` : `${lead.name}'s plan`,
+    context: task.plan?.summary,
+    options: [APPROVE_PLAN[task.locale]],
+    suggested: 0,
+    planApproval: true,
+    askedBy: lead.id,
+  };
+  emit(taskId, { type: "question", actor: lead.id, question });
+  node(taskId, "you", "active");
+  taskState.set(taskId, { resumeStep: step.id });
+  setStatus(taskId, "waiting", { question });
+}
+
+/** Your reply to the lead's plan: approve it, or say what to change and get another plan. */
+function answerPlan(task: Task, answer: string): void {
+  const taskId = task.id;
+  const flow = flowOf(task);
+  const index = flow.steps.findIndex((s) => s.type === "lead");
+  const step = flow.steps[index] as LeadFlowStep | undefined;
+  if (!step) throw new FlowError("This task has no lead step.");
+  const approve = answer.trim().toLowerCase() === (task.question?.options[0] ?? "").toLowerCase();
+  if (!approve && (task.plan?.revisions ?? 0) >= MAX_PLAN_REVISIONS) {
+    throw new FlowError("That's a lot of plans. Approve this one, or discard the task and describe it again.");
+  }
+
+  emit(taskId, { type: "answer", actor: "you", text: answer, remember: false });
+  node(taskId, "you", "done");
+  setStatus(taskId, "running", { question: null });
+  if (approve) {
+    drive(taskId, (signal) => runFlow(taskId, index + 1, { kind: "start" }, signal));
+    return;
+  }
+  drive(taskId, async (signal) => {
+    await leadStep(taskId, step, { note: answer }, signal);
+    askPlanApproval(taskId, step);
+  });
+}
 
 /** An "Ask me" step: the run pauses until you continue or send a note back. */
 function askYou(taskId: string, step: Extract<FlowStep, { type: "ask" }>): void {
@@ -524,6 +661,7 @@ export function answerQuestion(
   const task = tasks.get(taskId);
   if (!task || task.status !== "waiting" || !task.question) throw new FlowError("This task isn't waiting for an answer.");
   if (task.question.gate) return answerGate(task, answer);
+  if (task.question.planApproval) return answerPlan(task, answer);
   const form = task.question.form;
   const replan = Boolean(form && extra.replan);
   // A reply typed in the conversation (no form data) goes to Forge as free text.

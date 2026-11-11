@@ -80,7 +80,8 @@
     "decidedCount": "I decided {count, plural, one {# thing} other {# things}} for you",
     "looksGood": "Looks good",
     "correct": "Correct…",
-    "gateTitle": "Pause in the flow"
+    "gateTitle": "Pause in the flow",
+    "planTitle": "{name} proposes a plan"
   },
   "form": {
     "formTitle": "{name} has {count, plural, one {# question} other {# questions}}",
@@ -130,7 +131,9 @@
     "issuesTo": "{count, plural, one {# issue} other {# issues}} → {name}",
     "loopLabel": "changes requested · up to {max}×",
     "ask": "Ask me",
-    "roleAsk": "pause to check"
+    "roleAsk": "pause to check",
+    "roleLead": "plans the team",
+    "leadName": "Lead decides"
   },
   "run": {
     "stop": "Stop",
@@ -166,7 +169,9 @@
     "steered": "{name} stopped and resumed the same session with your message",
     "decidedForYou": "Decided for you",
     "decidedHint": "Reply here if you want something changed.",
-    "messagesOnly": "Messages only"
+    "messagesOnly": "Messages only",
+    "planTitle": "{name} planned the team",
+    "sendsBackTo": "(sends back to {name})"
   },
   "decide": {
     "back": "← Desk",
@@ -228,7 +233,8 @@
     "reviewerPlaceholder": "e.g. Look only for security problems: secrets, injection, unsafe input.",
     "newAgentFlows": "To put it to work, add it to a flow in Flows.",
     "create": "Create agent",
-    "confirmDelete": "Delete {name}"
+    "confirmDelete": "Delete {name}",
+    "roleLead": "Lead · reads each task and picks who works on it"
   },
   "settings": {
     "title": "Settings",
@@ -314,8 +320,12 @@
       "unknownAgent": "Step {position} uses {name}, who isn’t in the default crew.",
       "sendBackNotBuilder": "Step {position} must send work back to a builder before it.",
       "builderSendBack": "Step {position} builds, so it can’t send work back.",
-      "rounds": "Step {position}: rounds must be between 1 and {max}."
-    }
+      "rounds": "Step {position}: rounds must be between 1 and {max}.",
+      "leadAlone": "A Lead step must be the only step: the Lead plans the rest.",
+      "leadRole": "Step {position} needs an agent that leads."
+    },
+    "leadHint": "reads each task and picks who works on it",
+    "leadDescription": "The Lead reads each task and picks who builds, who reviews and whether the checks run. You approve the plan, or it runs in “Decide and tell me”."
   },
   "ws": {
     "all": "All workspaces",

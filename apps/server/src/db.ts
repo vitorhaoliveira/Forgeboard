@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { nanoid } from "nanoid";
-import { BUILD_AND_REVIEW } from "@forgeboard/shared";
+import { BUILD_AND_REVIEW, LEAD_DECIDES } from "@forgeboard/shared";
 import type {
   Agent,
   AgentId,
@@ -335,6 +335,14 @@ const DEFAULT_AGENTS: Agent[] = [
     personality: "strict",
     instructions: "Block on failing checks and on real bugs. Do not nitpick style that a linter would catch.",
   },
+  {
+    id: "lead",
+    name: "Lead",
+    role: "lead",
+    provider: "claude-code",
+    personality: "balanced",
+    instructions: "Pick the smallest team that does the task well. Skip the review for trivial changes; add one for anything risky or public.",
+  },
 ];
 
 function isBuiltIn(id: AgentId): boolean {
@@ -433,7 +441,7 @@ export const agents = {
 
 // ---------- Flows ----------
 
-const BUILT_IN_FLOWS: Flow[] = [BUILD_AND_REVIEW];
+const BUILT_IN_FLOWS: Flow[] = [BUILD_AND_REVIEW, LEAD_DECIDES];
 
 export const flows = {
   list(): Flow[] {
