@@ -10,7 +10,9 @@ import type { DiffFile } from "@forgeboard/shared";
 import { api } from "@/lib/api";
 import { useAppState, WorkspaceScope } from "@/lib/app-state";
 import { cleanAgentText } from "@/lib/run-model";
+import { flowOf, lastReviewer, roleOfIn } from "@/lib/flow-view";
 import { useTaskStream } from "@/lib/use-task-stream";
+import { useFlowName } from "./flow-graph";
 import { cn, formatCost } from "@/lib/utils";
 import { VerdictBlock } from "./activity-feed";
 import { Glyph, useActorName } from "./glyph";
@@ -71,12 +73,12 @@ export function DecideView({ taskId }: { taskId: string }) {
   const t = useTranslations("decide");
   const tr = useTranslations("review");
   const ts = useTranslations("status");
-  const tf = useTranslations("flow");
   const trun = useTranslations("run");
   const locale = useLocale();
   const router = useRouter();
   const name = useActorName();
-  const { refreshTasks } = useAppState();
+  const { refreshTasks, crews } = useAppState();
+  const flowName = useFlowName();
   const { task } = useTaskStream(taskId);
   const [files, setFiles] = useState<DiffFile[] | null>(null);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
@@ -112,6 +114,7 @@ export function DecideView({ taskId }: { taskId: string }) {
   }
 
   const v = task.verdict;
+  const reviewer = v?.by ?? lastReviewer(flowOf(task), roleOfIn(crews[task.workspaceId] ?? crews.default));
   const checks = task.checks ?? [];
   const includedCount = (files ?? []).filter((f) => !excluded.has(f.path)).length;
   const branch = task.baseBranch ?? "main";
@@ -158,7 +161,7 @@ export function DecideView({ taskId }: { taskId: string }) {
             <div className="flex flex-wrap items-center gap-2.5">
               <Chip tone={v?.approved ? "success" : "warning"}>{v?.approved ? tr("ready") : tr("concerns")}</Chip>
               <span className="text-[12.5px] text-muted">
-                {tf("name")} · {tr(v?.approved ? "approvedBy" : "notApproved", { name: name("hawk"), count: task.round })} ·{" "}
+                {flowName(flowOf(task))} · {tr(v?.approved ? "approvedBy" : "notApproved", { name: name(reviewer), count: task.round })} ·{" "}
                 <span className="font-mono">{formatCost(task.costUsd, locale)}</span>
               </span>
             </div>
@@ -239,9 +242,9 @@ export function DecideView({ taskId }: { taskId: string }) {
 
           {v?.suggestedRule && ruleState !== "dismissed" && (
             <section className="flex flex-wrap items-center gap-3.5 rounded-2xl border border-dashed border-accent/45 bg-accent/[0.04] px-4 py-3.5">
-              <Glyph actor="hawk" />
+              <Glyph actor={reviewer} />
               <div className="min-w-0 grow basis-[360px]">
-                <div className="font-medium">{t("teachTitle", { name: name("hawk") })}</div>
+                <div className="font-medium">{t("teachTitle", { name: name(reviewer) })}</div>
                 <div className="text-[13px] text-muted">
                   “{v.suggestedRule}” {t("teachBody")}
                 </div>

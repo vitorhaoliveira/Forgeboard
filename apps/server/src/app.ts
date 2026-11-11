@@ -7,11 +7,17 @@ import { streamSSE } from "hono/streaming";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import {
+  BUILD_AND_REVIEW_ID,
   isFinished,
   LOCALES,
   MAX_AGENTS,
+  MAX_FLOW_ROUNDS,
+  MAX_FLOW_STEPS,
+  validateFlow,
   WORKSPACE_COLORS,
   type Agent,
+  type Flow,
+  type FlowProblem,
   type HouseRule,
   type Repo,
   type RuleScope,
@@ -24,7 +30,7 @@ import { auth, matchesToken } from "./auth.js";
 import { bus } from "./bus.js";
 import { detectChecks } from "./checks.js";
 import { config } from "./config.js";
-import { agents, events, repos, rules, tasks, workspaces } from "./db.js";
+import { agents, events, flows, repos, rules, tasks, workspaces } from "./db.js";
 import { GitError, repoRoot } from "./git.js";
 import {
   ackAssumptions,
@@ -191,9 +197,11 @@ app.patch("/api/workspaces/:id", async (c) => {
       askMode: z.enum(["ask", "decide"]).optional(),
       planFirst: z.boolean().optional(),
       messageDelivery: z.enum(["now", "later"]).optional(),
+      defaultFlowId: z.string().min(1).optional(),
       archived: z.boolean().optional(),
     }),
   );
+  if (patch.defaultFlowId) flowFor(ws.id, patch.defaultFlowId);
   const next = { ...ws, ...patch };
   // Switching to a custom crew starts from the default crew.
   if (patch.crewMode === "custom" && ws.crewMode !== "custom") {
@@ -335,8 +343,92 @@ app.delete("/api/agents/:id", (c) => {
     agents.saveForWorkspace(ws.id, agents.defaults().find((a) => a.id === id)!);
     return c.json(agents.get(ws.id, id));
   }
+  const usedBy = flows.usingAgent(id);
+  if (usedBy.length) throw new FlowError(`${agent.name} is used by the flow "${usedBy[0]!.name}". Remove it from the flow first.`);
   if (workspaceId) agents.removeForWorkspace(mustGetWorkspace(workspaceId).id, id);
   else agents.removeDefault(id);
+  return c.body(null, 204);
+});
+
+// ---------- Flows ----------
+
+const flowStepSchema = z.discriminatedUnion("type", [
+  z.object({
+    id: z.string().min(1).max(40),
+    type: z.literal("agent"),
+    agentId: z.string().min(1).max(40),
+    sendBackTo: z.string().min(1).max(40).optional(),
+    maxRounds: z.number().int().min(1).max(MAX_FLOW_ROUNDS).optional(),
+  }),
+  z.object({ id: z.string().min(1).max(40), type: z.literal("checks") }),
+  z.object({ id: z.string().min(1).max(40), type: z.literal("ask"), note: z.string().max(300).optional() }),
+]);
+
+const flowSchema = z.object({
+  name: z.string().trim().min(1).max(40),
+  description: z.string().trim().max(200).default(""),
+  steps: z.array(flowStepSchema).min(1).max(MAX_FLOW_STEPS),
+});
+
+function describeProblem(p: FlowProblem): string {
+  switch (p.code) {
+    case "name": return "The flow needs a name.";
+    case "empty": return "The flow needs at least one step.";
+    case "tooMany": return `A flow can have at most ${p.max} steps.`;
+    case "duplicateId": return `Two steps share the id "${p.step}".`;
+    case "firstNotBuilder": return "The first step must be an agent that builds.";
+    case "unknownAgent": return `The step "${p.step}" uses an agent this crew doesn't have.`;
+    case "sendBackNotBuilder": return `The step "${p.step}" must send work back to a builder before it.`;
+    case "builderSendBack": return `The step "${p.step}" builds, so it can't send work back.`;
+    case "rounds": return `Rounds must be between 1 and ${p.max}.`;
+  }
+}
+
+/** Throws when a flow can't run with a crew (the default crew when no workspace is given). */
+function checkFlow(flow: Pick<Flow, "name" | "steps">, workspaceId?: string): void {
+  const crew = agents.forWorkspace(workspaceId);
+  const problems = validateFlow(flow, (id) => crew.find((a) => a.id === id)?.role);
+  if (problems.length) throw new HttpError(400, describeProblem(problems[0]!));
+}
+
+/** A flow a workspace can run: it must exist and fit that workspace's crew. */
+function flowFor(workspaceId: string, flowId: string): Flow {
+  const flow = flows.get(flowId);
+  if (!flow) throw new HttpError(404, "Flow not found");
+  checkFlow(flow, workspaceId);
+  return flow;
+}
+
+app.get("/api/flows", (c) => c.json(flows.list()));
+
+app.post("/api/flows", async (c) => {
+  const input = await body(c, flowSchema);
+  checkFlow(input);
+  const flow: Flow = { id: nanoid(10), ...input };
+  flows.save(flow);
+  return c.json(flow, 201);
+});
+
+app.patch("/api/flows/:id", async (c) => {
+  const current = flows.get(c.req.param("id"));
+  if (!current) throw new HttpError(404, "Flow not found");
+  if (current.builtIn) throw new HttpError(400, "Built-in flows can't be changed. Duplicate it instead.");
+  const input = await body(c, flowSchema);
+  checkFlow(input);
+  const flow: Flow = { ...current, ...input };
+  flows.save(flow);
+  return c.json(flow);
+});
+
+app.delete("/api/flows/:id", (c) => {
+  const flow = flows.get(c.req.param("id"));
+  if (!flow) throw new HttpError(404, "Flow not found");
+  if (flow.builtIn) throw new HttpError(400, "Built-in flows can't be deleted.");
+  // Workspaces that used it go back to Build & Review; tasks keep their own copy.
+  for (const ws of workspaces.list()) {
+    if (ws.defaultFlowId === flow.id) workspaces.save({ ...ws, defaultFlowId: undefined });
+  }
+  flows.remove(flow.id);
   return c.body(null, 204);
 });
 
@@ -425,10 +517,13 @@ app.post("/api/tasks", async (c) => {
       prompt: z.string().trim().min(1).max(20_000),
       locale: z.enum(LOCALES as [string, ...string[]]),
       maxRounds: z.number().int().min(1).max(5).optional(),
+      flowId: z.string().min(1).optional(),
     }),
   );
   const repo = repos.get(input.repoId);
   if (!repo) throw new HttpError(404, "Repo not found");
+  // Copied now, so later edits to the flow don't change this task.
+  const flow = flowFor(repo.workspaceId, input.flowId ?? workspaces.get(repo.workspaceId)?.defaultFlowId ?? BUILD_AND_REVIEW_ID);
 
   const now = new Date().toISOString();
   const task: Task = {
@@ -441,6 +536,7 @@ app.post("/api/tasks", async (c) => {
     status: "queued",
     round: 0,
     maxRounds: input.maxRounds ?? 3,
+    flow,
     branch: null,
     baseBranch: null,
     question: null,

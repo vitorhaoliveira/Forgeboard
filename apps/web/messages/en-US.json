@@ -51,7 +51,8 @@
     "needsRepo": "Create a workspace first",
     "destination": "Where the task runs",
     "noRepos": "Add a repository to this workspace first",
-    "placeholderWs": "Tell the {name} crew what to do…"
+    "placeholderWs": "Tell the {name} crew what to do…",
+    "flow": "Flow"
   },
   "desk": {
     "headline": "{count, plural, one {# thing is waiting for you} other {# things are waiting for you}}",
@@ -78,7 +79,8 @@
     "stillWorking": "still working",
     "decidedCount": "I decided {count, plural, one {# thing} other {# things}} for you",
     "looksGood": "Looks good",
-    "correct": "Correct…"
+    "correct": "Correct…",
+    "gateTitle": "Pause in the flow"
   },
   "form": {
     "formTitle": "{name} has {count, plural, one {# question} other {# questions}}",
@@ -126,7 +128,9 @@
     "roleTask": "start here",
     "roleMerge": "into your branch",
     "issuesTo": "{count, plural, one {# issue} other {# issues}} → {name}",
-    "loopLabel": "changes requested · up to {max}×"
+    "loopLabel": "changes requested · up to {max}×",
+    "ask": "Ask me",
+    "roleAsk": "pause to check"
   },
   "run": {
     "stop": "Stop",
@@ -222,7 +226,7 @@
     "reviewerHint": "Reads the change and approves or sends it back",
     "builderPlaceholder": "e.g. Write and update the docs for every change.",
     "reviewerPlaceholder": "e.g. Look only for security problems: secrets, injection, unsafe input.",
-    "newAgentFlows": "To put it to work, add it to a flow (Flows, coming in v2.0).",
+    "newAgentFlows": "To put it to work, add it to a flow in Flows.",
     "create": "Create agent",
     "confirmDelete": "Delete {name}"
   },
@@ -262,8 +266,56 @@
   },
   "flows": {
     "title": "Flows",
-    "body": "v1 ships with one flow, Build & Review. Designing your own flows with drag-and-drop blocks is coming next.",
-    "rounds": "Hawk can send work back up to {max} times before asking you."
+    "body": "A flow is the list of steps a task goes through before it gets to you: agents that build, checks, agents that review and send work back, and pauses for you.",
+    "rounds": "rounds",
+    "builtIn": "built in",
+    "defaultIn": "{count, plural, one {default in # workspace} other {default in # workspaces}}",
+    "edit": "Edit",
+    "duplicate": "Duplicate",
+    "confirmDelete": "Delete flow",
+    "builtInDescription": "Forge builds, the checks run, Hawk reviews and sends it back until it’s right.",
+    "name": "Name",
+    "namePlaceholder": "e.g. Build, review, document",
+    "description": "Description",
+    "descriptionPlaceholder": "What this flow is for (optional)",
+    "preview": "Preview",
+    "noSteps": "Add a step to see the flow.",
+    "steps": "Steps",
+    "agent": "Agent",
+    "builds": "builds",
+    "reviews": "reviews",
+    "sendBackTo": "sends back to",
+    "builderBefore": "{name} (the builder before)",
+    "nobody": "nobody (goes on)",
+    "roundsDefault": "task default",
+    "checks": "Checks",
+    "checksHint": "the repository’s tests, lint and types",
+    "ask": "Ask me",
+    "askNote": "What to check at this pause",
+    "askPlaceholder": "e.g. Check the copy before the docs are written",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "removeStep": "Remove step",
+    "addBuilder": "Agent that builds",
+    "addReviewer": "Agent that reviews",
+    "addChecks": "Checks",
+    "addAsk": "Ask me",
+    "endsWithYou": "Every flow ends with you: review the change and merge, send it back or discard.",
+    "crewNote": "Uses the default crew. A workspace with its own crew needs the same agents to run this flow.",
+    "create": "Create flow",
+    "newFlow": "New flow",
+    "copyOf": "{name} (copy)",
+    "problem": {
+      "name": "Give the flow a name.",
+      "empty": "Add at least one step.",
+      "tooMany": "A flow can have at most {max} steps.",
+      "duplicateId": "Step {position} repeats an id.",
+      "firstNotBuilder": "The first step must be an agent that builds.",
+      "unknownAgent": "Step {position} uses {name}, who isn’t in the default crew.",
+      "sendBackNotBuilder": "Step {position} must send work back to a builder before it.",
+      "builderSendBack": "Step {position} builds, so it can’t send work back.",
+      "rounds": "Step {position}: rounds must be between 1 and {max}."
+    }
   },
   "ws": {
     "all": "All workspaces",
@@ -377,7 +429,9 @@
     "interruptHint": "Your message arrives right away: the agent stops its step and resumes with it. Off, it waits for the next pause. You can switch it on each message.",
     "notify": "Notify me in the browser when I'm needed",
     "notifyHint": "A system notification when an agent asks something or finishes review, if Forgeboard isn't on screen. For this browser.",
-    "notifyUnsupported": "This browser doesn't allow notifications."
+    "notifyUnsupported": "This browser doesn't allow notifications.",
+    "flowTitle": "Flow",
+    "flowHint": "New tasks in this workspace run this flow, unless you pick another in the task bar."
   },
   "demo": {
     "banner": "Live demo: a simulated crew runs in your browser. No AI is called and nothing touches a real repository.",

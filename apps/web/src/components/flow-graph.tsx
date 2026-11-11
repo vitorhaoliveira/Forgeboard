@@ -1,18 +1,17 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { Check, GitMerge, Hand, Sparkles, X } from "lucide-react";
-import type { Actor, FlowNode, NodeState } from "@forgeboard/shared";
+import { Check, GitMerge, Hand, MessageCircleQuestion, Sparkles, X } from "lucide-react";
+import type { Actor, AgentId, Flow, FlowStep, NodeState } from "@forgeboard/shared";
+import { sendBackIndex, stepActor, type RoleOf } from "@/lib/flow-view";
 import type { NodeStates } from "@/lib/run-model";
 import { cn } from "@/lib/utils";
 import { Glyph, useActorName } from "./glyph";
 
-const ORDER: FlowNode[] = ["task", "forge", "checks", "hawk", "you", "merge"];
 const STEP = 176;
 const NODE_W = 140;
-const TOP = 64;
-
-const SELECTABLE: Partial<Record<FlowNode, Actor>> = { forge: "forge", checks: "checks", hawk: "hawk", you: "you" };
+/** Height of one loop arc level above the nodes. */
+const LOOP_LEVEL = 18;
 
 function Badge({ state }: { state: NodeState }) {
   if (state === "idle" || state === "active") return null;
@@ -24,118 +23,145 @@ function Badge({ state }: { state: NodeState }) {
   );
 }
 
+/** The name of a flow: built-in ones are translated. */
+export function useFlowName() {
+  const t = useTranslations("flow");
+  return (flow: Pick<Flow, "name" | "builtIn">) => (flow.builtIn ? t("name") : flow.name);
+}
+
 export interface FlowGraphProps {
+  flow: Flow;
+  roleOf: RoleOf;
   states: NodeStates;
-  /** Line under each node's name (live activity, results…). */
-  notes?: Partial<Record<FlowNode, string>>;
-  loopActive?: boolean;
-  loopLabel?: string;
+  /** Line under each node's name (live activity, results…), by node id. */
+  notes?: Record<string, string>;
+  /** Rounds for reviewers that don't set their own. */
+  defaultRounds?: number;
+  /** The last hand-back, to label its loop with the number of issues. */
+  handBack?: { from: AgentId; count: number } | null;
+  round?: number;
   selected?: Actor | null;
   onSelect?: (actor: Actor) => void;
 }
 
-/** The Build & Review flow as a graph. Nodes light up as the run moves. */
-export function FlowGraph({ states, notes = {}, loopActive, loopLabel, selected, onSelect }: FlowGraphProps) {
+type GraphNode = { id: string; step?: FlowStep };
+
+/** A flow as a graph: your task, its steps, then you and the merge. Nodes light up as the run moves. */
+export function FlowGraph({ flow, roleOf, states, notes = {}, defaultRounds = 3, handBack, round = 0, selected, onSelect }: FlowGraphProps) {
   const t = useTranslations("flow");
   const name = useActorName();
 
-  const label: Record<FlowNode, string> = {
-    task: t("task"),
-    forge: name("forge"),
-    checks: t("checks"),
-    hawk: name("hawk"),
-    you: t("you"),
-    merge: t("merge"),
-  };
-  const role: Record<FlowNode, string> = {
-    task: t("roleTask"),
-    forge: t("roleForge"),
-    checks: t("roleChecks"),
-    hawk: t("roleHawk"),
-    you: t("roleYou"),
-    merge: t("roleMerge"),
-  };
+  const nodes: GraphNode[] = [{ id: "task" }, ...flow.steps.map((step) => ({ id: step.id, step })), { id: "you" }, { id: "merge" }];
 
-  const icon = (n: FlowNode) => {
-    if (n === "forge" || n === "hawk") return <Glyph actor={n} />;
-    const Icon = n === "task" ? Sparkles : n === "checks" ? Check : n === "you" ? Hand : GitMerge;
+  // Each reviewer that sends work back draws an arc to its builder; shorter arcs sit lower.
+  const loops = flow.steps
+    .map((step, i) => ({ step, from: i, to: sendBackIndex(flow, i, roleOf) }))
+    // Only backward arcs: a target after the reviewer is an invalid flow still being edited.
+    .filter((l) => l.to !== -1 && l.to < l.from && l.step.type === "agent")
+    .sort((a, b) => a.from - a.to - (b.from - b.to))
+    .map((l, level) => {
+      const agentId = l.step.type === "agent" ? l.step.agentId : "";
+      const target = flow.steps[l.to]!;
+      const mine = handBack?.from === agentId && round > 1;
+      const max = (l.step.type === "agent" && l.step.maxRounds) || defaultRounds;
+      const targetName = target.type === "agent" ? name(target.agentId) : "";
+      return {
+        key: l.step.id,
+        // Node indexes are step indexes + 1 (the task node comes first).
+        left: STEP * (l.to + 1) + NODE_W / 2,
+        right: STEP * (l.from + 1) + NODE_W / 2,
+        level,
+        active: mine && states[target.id] === "active",
+        label: mine ? t("issuesTo", { count: handBack!.count, name: targetName }) : t("loopLabel", { max }),
+      };
+    });
+  const top = 22 + loops.length * LOOP_LEVEL + (loops.length ? 20 : 0);
+
+  const label = (n: GraphNode) => {
+    if (!n.step) return t(n.id as "task" | "you" | "merge");
+    return n.step.type === "agent" ? name(n.step.agentId) : n.step.type === "checks" ? t("checks") : t("ask");
+  };
+  const role = (n: GraphNode) => {
+    if (!n.step) return n.id === "task" ? t("roleTask") : n.id === "you" ? t("roleYou") : t("roleMerge");
+    if (n.step.type === "agent") return roleOf(n.step.agentId) === "reviewer" ? t("roleHawk") : t("roleForge");
+    return n.step.type === "checks" ? t("roleChecks") : t("roleAsk");
+  };
+  const icon = (n: GraphNode) => {
+    if (n.step?.type === "agent") return <Glyph actor={n.step.agentId} />;
+    const Icon = !n.step ? (n.id === "task" ? Sparkles : n.id === "you" ? Hand : GitMerge) : n.step.type === "checks" ? Check : MessageCircleQuestion;
     return (
       <span className="grid size-[26px] shrink-0 place-items-center rounded-lg border border-border bg-panel-2 text-muted">
-        <Icon className={cn("size-3.5", n === "task" && "text-accent", n === "you" && "text-violet")} aria-hidden="true" />
+        <Icon className={cn("size-3.5", n.id === "task" && "text-accent", (n.id === "you" || n.step?.type === "ask") && "text-violet")} aria-hidden="true" />
       </span>
     );
   };
 
-  const forgeCenter = STEP * 1 + NODE_W / 2;
-  const hawkCenter = STEP * 3 + NODE_W / 2;
-
   return (
-    <div className="relative mx-auto h-[150px] shrink-0" style={{ width: STEP * (ORDER.length - 1) + NODE_W }}>
-      {/* Loop back from Hawk to Forge */}
-      <span
-        aria-hidden="true"
-        className={cn(
-          "absolute rounded-t-[14px] border-x-2 border-t-2",
-          loopActive ? "border-solid border-accent" : "border-dashed border-border-strong",
-        )}
-        style={{ left: forgeCenter, width: hawkCenter - forgeCenter, top: 22, height: TOP - 22 }}
-      />
-      {loopLabel && (
-        <span
-          className={cn(
-            "absolute -translate-x-1/2 rounded-full border px-2 py-0.5 text-[11px] whitespace-nowrap",
-            loopActive ? "border-accent bg-accent font-semibold text-bg" : "border-border bg-bg text-muted",
-          )}
-          style={{ left: (forgeCenter + hawkCenter) / 2, top: 11 }}
-        >
-          {loopLabel}
-        </span>
-      )}
+    <div className="relative mx-auto shrink-0" style={{ width: STEP * (nodes.length - 1) + NODE_W, height: top + 86 }}>
+      {loops.map((l) => {
+        const arcTop = top - 22 - l.level * LOOP_LEVEL - 20;
+        return (
+          <span key={l.key}>
+            <span
+              aria-hidden="true"
+              className={cn("absolute rounded-t-[14px] border-x-2 border-t-2", l.active ? "border-solid border-accent" : "border-dashed border-border-strong")}
+              style={{ left: l.left, width: l.right - l.left, top: arcTop + 11, height: top - arcTop - 11 }}
+            />
+            <span
+              className={cn(
+                "absolute -translate-x-1/2 rounded-full border px-2 py-0.5 text-[11px] whitespace-nowrap",
+                l.active ? "border-accent bg-accent font-semibold text-bg" : "border-border bg-bg text-muted",
+              )}
+              style={{ left: (l.left + l.right) / 2, top: arcTop }}
+            >
+              {l.label}
+            </span>
+          </span>
+        );
+      })}
 
-      {ORDER.slice(0, -1).map((n, i) => {
-        const next = ORDER[i + 1]!;
-        const lit = states[next] !== "idle" && states[n] !== "idle";
+      {nodes.slice(0, -1).map((n, i) => {
+        const next = nodes[i + 1]!;
+        const lit = states[next.id] !== "idle" && states[n.id] !== "idle";
         return (
           <span
-            key={`edge-${n}`}
+            key={`edge-${n.id}`}
             aria-hidden="true"
             className={cn("absolute h-0.5", lit ? "bg-success/55" : "bg-[#1f1f23]")}
-            style={{ left: STEP * i + NODE_W, width: STEP - NODE_W, top: TOP + 29 }}
+            style={{ left: STEP * i + NODE_W, width: STEP - NODE_W, top: top + 29 }}
           />
         );
       })}
 
-      {ORDER.map((n, i) => {
-        const state = states[n];
-        const actor = SELECTABLE[n];
-        const isSelected = actor && selected === actor;
+      {nodes.map((n, i) => {
+        const state = states[n.id] ?? "idle";
+        const actor: Actor | null = n.step ? stepActor(n.step) : n.id === "you" ? "you" : null;
+        const isSelected = actor !== null && selected === actor;
         const content = (
           <>
             {icon(n)}
             <span className="min-w-0 text-left">
-              <b className="block text-[13px] font-medium">{label[n]}</b>
-              <small className={cn("block truncate text-[11px] text-muted", state === "active" && "text-[#fdba74]")}>
-                {notes[n] ?? role[n]}
-              </small>
+              <b className="block truncate text-[13px] font-medium">{label(n)}</b>
+              <small className={cn("block truncate text-[11px] text-muted", state === "active" && "text-[#fdba74]")}>{notes[n.id] ?? role(n)}</small>
             </span>
             <Badge state={state} />
           </>
         );
         const className = cn(
           "absolute flex h-[60px] items-center gap-2.5 rounded-xl border border-border bg-panel px-3 transition",
-          state === "idle" && n !== "task" && "opacity-45",
+          state === "idle" && n.id !== "task" && "opacity-45",
           state === "active" && "border-accent shadow-[0_0_0_4px_rgba(249,115,22,.16),0_0_28px_rgba(249,115,22,.18)]",
-          n === "you" && state !== "active" && "border-dashed",
+          (n.id === "you" || n.step?.type === "ask") && state !== "active" && "border-dashed",
           isSelected && state !== "active" && "border-border-strong bg-panel-2",
-          actor && "cursor-pointer hover:border-border-strong",
+          actor && onSelect && "cursor-pointer hover:border-border-strong",
         );
-        const style = { left: STEP * i, top: TOP, width: NODE_W };
+        const style = { left: STEP * i, top, width: NODE_W };
         return actor && onSelect ? (
-          <button key={n} type="button" onClick={() => onSelect(actor)} aria-pressed={Boolean(isSelected)} className={className} style={style}>
+          <button key={n.id} type="button" onClick={() => onSelect(actor)} aria-pressed={isSelected} className={className} style={style}>
             {content}
           </button>
         ) : (
-          <div key={n} className={className} style={style}>
+          <div key={n.id} className={className} style={style}>
             {content}
           </div>
         );

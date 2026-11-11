@@ -39,8 +39,8 @@ export type TaskStatus =
   | "cancelled"
   | "error";
 
-/** Steps of the Build & Review flow, used to light up the graph. */
-export type FlowNode = "task" | "forge" | "checks" | "hawk" | "you" | "merge";
+/** A node of the run graph: "task", a step id of the task's flow, "you" or "merge". */
+export type FlowNode = string;
 export type NodeState = "idle" | "active" | "done" | "failed" | "warn";
 
 export interface Agent {
@@ -76,7 +76,13 @@ export type FlowStep =
       /** Reviewers only: rounds before the work goes to you anyway. Missing means the task's maxRounds. */
       maxRounds?: number;
     }
-  | { id: string; type: "checks" };
+  | { id: string; type: "checks" }
+  /** Pauses and shows what was done so far: you continue, or send a note to the builder before it. */
+  | { id: string; type: "ask"; note?: string };
+
+export type FlowStepType = FlowStep["type"];
+export const MAX_FLOW_STEPS = 12;
+export const MAX_FLOW_ROUNDS = 5;
 
 /** A list of steps a task runs, in order. It always ends with you deciding. */
 export interface Flow {
@@ -105,6 +111,58 @@ export const BUILD_AND_REVIEW: Flow = {
     { id: "hawk", type: "agent", agentId: "hawk", sendBackTo: "forge" },
   ],
 };
+
+/** Problems that stop a flow from running, as message keys with values (the UI translates them). */
+export type FlowProblem =
+  | { code: "name" }
+  | { code: "empty" }
+  | { code: "tooMany"; max: number }
+  | { code: "duplicateId"; step: string }
+  | { code: "firstNotBuilder" }
+  | { code: "unknownAgent"; step: string; agentId: string }
+  | { code: "sendBackNotBuilder"; step: string }
+  | { code: "builderSendBack"; step: string }
+  | { code: "rounds"; step: string; max: number };
+
+/**
+ * Checks a flow can run. `roleOf` gives the role of an agent of the crew that will run it
+ * (undefined when the crew has no such agent).
+ */
+export function validateFlow(flow: Pick<Flow, "name" | "steps">, roleOf: (agentId: AgentId) => AgentRole | undefined): FlowProblem[] {
+  const problems: FlowProblem[] = [];
+  if (!flow.name.trim()) problems.push({ code: "name" });
+  if (flow.steps.length === 0) return [...problems, { code: "empty" }];
+  if (flow.steps.length > MAX_FLOW_STEPS) problems.push({ code: "tooMany", max: MAX_FLOW_STEPS });
+  const seen = new Set<string>();
+  flow.steps.forEach((step, i) => {
+    if (seen.has(step.id)) problems.push({ code: "duplicateId", step: step.id });
+    seen.add(step.id);
+    if (step.type !== "agent") {
+      if (i === 0) problems.push({ code: "firstNotBuilder" });
+      return;
+    }
+    const role = roleOf(step.agentId);
+    if (!role) {
+      problems.push({ code: "unknownAgent", step: step.id, agentId: step.agentId });
+      return;
+    }
+    if (i === 0 && role !== "builder") problems.push({ code: "firstNotBuilder" });
+    if (role === "builder" && step.sendBackTo) problems.push({ code: "builderSendBack", step: step.id });
+    if (role === "reviewer") {
+      if (step.sendBackTo) {
+        const target = flow.steps.findIndex((s) => s.id === step.sendBackTo);
+        const t = flow.steps[target];
+        if (target === -1 || target >= i || t?.type !== "agent" || roleOf(t.agentId) !== "builder") {
+          problems.push({ code: "sendBackNotBuilder", step: step.id });
+        }
+      }
+      if (step.maxRounds !== undefined && (step.maxRounds < 1 || step.maxRounds > MAX_FLOW_ROUNDS || !Number.isInteger(step.maxRounds))) {
+        problems.push({ code: "rounds", step: step.id, max: MAX_FLOW_ROUNDS });
+      }
+    }
+  });
+  return problems;
+}
 
 export interface CheckCommand {
   name: string;
@@ -149,6 +207,8 @@ export interface Workspace {
   planFirst?: boolean;
   /** Default delivery for messages sent while an agent works. Missing means "now". */
   messageDelivery?: MessageDelivery;
+  /** Flow new tasks run unless you pick another. Missing means Build & Review. */
+  defaultFlowId?: string;
   archived: boolean;
   createdAt: string;
 }
@@ -203,6 +263,8 @@ export interface Verdict {
   risk: "low" | "medium" | "high";
   /** A rule Hawk thinks the crew should follow from now on. */
   suggestedRule?: string;
+  /** The reviewer that gave it. Missing on verdicts from before v2.0 (Hawk). */
+  by?: AgentId;
 }
 
 export type FormFieldType = "choice" | "multi" | "toggle" | "text" | "steps";
@@ -250,6 +312,10 @@ export interface AgentQuestion {
   form?: AgentForm;
   /** The form compiled to A2UI v0.9 messages, validated against Forgeboard's catalog. */
   ui?: unknown[];
+  /** The agent that asked. Missing on questions from before v2.0 (Forge) and on "Ask me" pauses. */
+  askedBy?: AgentId;
+  /** An "Ask me" step of the flow: the first option continues, anything else goes back as a note. */
+  gate?: boolean;
 }
 
 export interface Task {
@@ -300,8 +366,8 @@ export type RunEventPayload =
   | WithActor<{ type: "merged"; branch: string }>
   /** A message you sent while the crew worked. */
   | WithActor<{ type: "message"; text: string; delivery: MessageDelivery }>
-  /** Forge stopped its step to read your message and resumed the same session. */
-  | WithActor<{ type: "steer" }>
+  /** A builder stopped its step to read your message and resumed the same session. Missing agentId: Forge (before v2.0). */
+  | WithActor<{ type: "steer"; agentId?: AgentId }>
   /** Decisions Forge made without asking ("decide" mode). */
   | WithActor<{ type: "assumptions"; items: string[] }>
   | WithActor<{ type: "error"; message: string }>;
@@ -325,7 +391,12 @@ export interface CreateTaskInput {
   prompt: string;
   locale: Locale;
   maxRounds?: number;
+  /** Missing means the workspace's default flow. */
+  flowId?: string;
 }
+
+/** A flow you make: everything but the id and the built-in flag. */
+export type FlowInput = Pick<Flow, "name" | "description" | "steps">;
 
 export interface DiffFile {
   path: string;

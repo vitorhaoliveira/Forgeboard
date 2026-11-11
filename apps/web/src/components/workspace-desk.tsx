@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslations } from "next-intl";
 import { ChevronRight, ListChecks, Loader2, SlidersHorizontal } from "lucide-react";
-import { isActive, isFinished, needsYou } from "@forgeboard/shared";
+import { isActive, isFinished, needsYou, type Task } from "@forgeboard/shared";
 import { api } from "@/lib/api";
+import { useTaskAgents } from "@/lib/use-task-agents";
 import { useAppState, WorkspaceScope } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
 import { AssumptionsCard, QuestionCard, RecentRow, ReviewCard, toCheck } from "./desk-cards";
@@ -175,7 +176,7 @@ export function WorkspaceDesk({ workspaceId, repoFilter }: { workspaceId: string
                 <Card className="divide-y divide-border px-3.5 py-1">
                   {working.map((task) => (
                     <Link key={task.id} href={`/runs/${task.id}`} className="flex items-center gap-2.5 py-[11px] text-[13px]">
-                      <Glyph actor="forge" size={22} />
+                      <TaskBuilderGlyph task={task} />
                       <span className="min-w-0 truncate">{task.title}</span>
                       <Chip className="ml-auto h-[22px] shrink-0 font-mono">{repoName(task.repoId)}</Chip>
                       <span className="shrink-0 text-xs text-info">{task.round > 0 ? tc("round", { round: task.round, max: task.maxRounds }) : ""}</span>
@@ -253,4 +254,10 @@ export function WorkspaceDesk({ workspaceId, repoFilter }: { workspaceId: string
       </main>
     </WorkspaceScope>
   );
+}
+
+/** The agent a task is "for": its flow's first builder. */
+function TaskBuilderGlyph({ task }: { task: Task }) {
+  const { builder } = useTaskAgents(task);
+  return <Glyph actor={builder} size={22} />;
 }

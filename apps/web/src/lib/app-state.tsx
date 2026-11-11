@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { needsYou, type Agent, type AgentId, type ProviderInfo, type Repo, type Task, type Workspace } from "@forgeboard/shared";
+import { needsYou, type Agent, type AgentId, type Flow, type ProviderInfo, type Repo, type Task, type Workspace } from "@forgeboard/shared";
 import { api, ServerDownError, UnauthorizedError } from "./api";
 
 const LAST_REPO_KEY = "forgeboard:lastRepo";
@@ -26,6 +26,9 @@ interface AppState {
   /** An agent of the crew a workspace uses (or of the default crew). */
   agentOf: (id: AgentId, workspaceId?: string) => Agent | undefined;
   refreshCrews: () => Promise<void>;
+  /** Built-in flows first, then the ones you made. */
+  flows: Flow[];
+  refreshFlows: () => Promise<void>;
   lastRepoId: string | null;
   rememberRepo: (id: string) => void;
   newWorkspaceOpen: boolean;
@@ -64,6 +67,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [crews, setCrews] = useState<Record<string, Agent[]>>({});
+  const [flows, setFlows] = useState<Flow[]>([]);
   const [lastRepoId, setLastRepoId] = useState<string | null>(null);
   const [newWorkspaceOpen, setNewWorkspaceOpen] = useState(false);
   const [serverDown, setServerDown] = useState(false);
@@ -97,6 +101,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const refreshRepos = useCallback(() => guard(async () => setRepos(await api.repos())), [guard]);
   const refreshTasks = useCallback(() => guard(async () => setTasks(await api.tasks())), [guard]);
 
+  const refreshFlows = useCallback(() => guard(async () => setFlows(await api.flows())), [guard]);
+
   const refreshCrews = useCallback(
     () =>
       guard(async () => {
@@ -119,8 +125,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    void Promise.all([refreshWorkspaces(), refreshRepos(), refreshTasks(), refreshCrews()]).finally(() => setLoaded(true));
-  }, [refreshWorkspaces, refreshRepos, refreshTasks, refreshCrews]);
+    void Promise.all([refreshWorkspaces(), refreshRepos(), refreshTasks(), refreshCrews(), refreshFlows()]).finally(() => setLoaded(true));
+  }, [refreshWorkspaces, refreshRepos, refreshTasks, refreshCrews, refreshFlows]);
 
   // System notification when a task starts needing you, if the tab isn't in view.
   const lastStatus = useRef<Map<string, string>>(new Map());
@@ -181,6 +187,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       crews,
       agentName,
       agentOf,
+      flows,
+      refreshFlows,
       refreshCrews,
       lastRepoId,
       rememberRepo,
@@ -192,7 +200,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setNotify,
       loaded,
     }),
-    [workspaces, refreshWorkspaces, repos, refreshRepos, tasks, refreshTasks, providers, crews, agentName, agentOf, refreshCrews, lastRepoId, rememberRepo, newWorkspaceOpen, serverDown, locked, notify, setNotify, loaded],
+    [workspaces, refreshWorkspaces, repos, refreshRepos, tasks, refreshTasks, providers, crews, agentName, agentOf, flows, refreshFlows, refreshCrews, lastRepoId, rememberRepo, newWorkspaceOpen, serverDown, locked, notify, setNotify, loaded],
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

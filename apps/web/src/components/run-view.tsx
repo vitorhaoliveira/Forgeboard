@@ -5,46 +5,48 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { GitBranch, Loader2, Play, Square, Trash2 } from "lucide-react";
-import { isActive, isFinished, type Actor, type FlowNode, type RunEvent } from "@forgeboard/shared";
+import { isActive, isFinished, type Actor, type RunEvent } from "@forgeboard/shared";
 import { api } from "@/lib/api";
 import { useAppState, WorkspaceScope } from "@/lib/app-state";
+import { flowActors, flowOf, roleOfIn } from "@/lib/flow-view";
 import { lastHandBack, nodeStates, runBounds, segments } from "@/lib/run-model";
 import { useTaskStream } from "@/lib/use-task-stream";
 import { cn, formatCost, timeAgo } from "@/lib/utils";
 import { ActivityFeed } from "./activity-feed";
 import { Composer } from "./composer";
 import { QuestionCard } from "./desk-cards";
-import { FlowGraph } from "./flow-graph";
+import { FlowGraph, useFlowName } from "./flow-graph";
 import { Glyph, useActorName } from "./glyph";
 import { RunTimeline } from "./run-timeline";
 import { StatusChip } from "./status-chip";
 import { Button, buttonClass } from "./ui";
 import { WorkspaceDot } from "./workspace-ui";
 
-const FILTERS: (Actor | null)[] = [null, "forge", "checks", "hawk", "you"];
-
-/** Short live notes under graph nodes. */
-function graphNotes(events: RunEvent[], t: (k: string, v?: Record<string, string | number>) => string): Partial<Record<FlowNode, string>> {
-  const notes: Partial<Record<FlowNode, string>> = {};
+/** Short live notes under graph nodes, by node id: each note goes to the node that was active. */
+function graphNotes(events: RunEvent[], t: (k: string, v?: Record<string, string | number>) => string): Record<string, string> {
+  const notes: Record<string, string> = {};
+  let active: string | null = null;
   for (const e of events) {
-    if (e.type === "tool_use" && e.actor === "forge") notes.forge = e.name;
+    if (e.type === "node" && e.state === "active") active = e.node;
+    if (!active) continue;
+    if (e.type === "tool_use") notes[active] = e.name;
     if (e.type === "checks") {
       const failed = e.results.filter((r) => !r.ok).length;
-      notes.checks = e.results.length === 0 ? "—" : failed ? t("checksFailed", { count: failed }) : t("checksAllPassed");
+      notes[active] = e.results.length === 0 ? "—" : failed ? t("checksFailed", { count: failed }) : t("checksAllPassed");
     }
-    if (e.type === "verdict") notes.hawk = e.verdict.approved ? t("approved") : t("changesRequested");
+    if (e.type === "verdict") notes[active] = e.verdict.approved ? t("approved") : t("changesRequested");
   }
   return notes;
 }
 
 export function RunView({ taskId }: { taskId: string }) {
   const t = useTranslations("run");
-  const tf = useTranslations("flow");
   const td = useTranslations("decide");
   const locale = useLocale();
   const router = useRouter();
   const name = useActorName();
-  const { refreshTasks, workspace, repo } = useAppState();
+  const { refreshTasks, workspace, repo, crews } = useAppState();
+  const flowName = useFlowName();
   const { task, events: allEvents, error } = useTaskStream(taskId);
   /** While replaying, how many events are shown. */
   const [replayAt, setReplayAt] = useState<number | null>(null);
@@ -91,12 +93,21 @@ export function RunView({ taskId }: { taskId: string }) {
     if (status) void refreshTasks();
   }, [status, refreshTasks]);
 
-  const states = useMemo(() => nodeStates(events), [events]);
-  const segs = useMemo(() => segments(events), [events]);
+  const flow = task ? flowOf(task) : null;
+  const roleOf = useMemo(() => roleOfIn(task ? (crews[task.workspaceId] ?? crews.default) : crews.default), [crews, task]);
+  const states = useMemo(() => (flow ? nodeStates(events, flow, roleOf) : {}), [events, flow, roleOf]);
+  const segs = useMemo(() => (flow ? segments(events, flow) : []), [events, flow]);
   const handBack = lastHandBack(events);
+  // The builder whose step is running, for "Message to …".
+  const activeBuilder = useMemo(() => {
+    if (!flow) return null;
+    const active = [...events].reverse().find((e) => e.type === "node" && e.state === "active" && flow.steps.some((s) => s.id === e.node));
+    const step = active?.type === "node" ? flow.steps.find((s) => s.id === active.node) : undefined;
+    return step?.type === "agent" && roleOf(step.agentId) === "builder" ? step.agentId : null;
+  }, [events, flow, roleOf]);
 
   if (error) return <p className="p-8 text-sm text-danger">{error}</p>;
-  if (!task) {
+  if (!task || !flow) {
     return (
       <div className="grid grow place-items-center text-muted">
         <Loader2 className="size-5 animate-spin" aria-hidden="true" />
@@ -105,8 +116,7 @@ export function RunView({ taskId }: { taskId: string }) {
   }
 
   const bounds = runBounds(events, task, now);
-  const loopActive = task.round > 1 && states.forge === "active";
-  const loopLabel = handBack !== null && task.round > 1 ? tf("issuesTo", { count: handBack, name: name("forge") }) : tf("loopLabel", { max: task.maxRounds });
+  const filters: (Actor | null)[] = [null, ...flowActors(flow)];
 
   async function stop() {
     setBusy("stop");
@@ -147,7 +157,7 @@ export function RunView({ taskId }: { taskId: string }) {
               </>
             )}
             <Link href="/flows" className="hover:text-text">
-              {tf("name")}
+              {flowName(flow)}
             </Link>
             {task.branch && (
               <>
@@ -189,13 +199,16 @@ export function RunView({ taskId }: { taskId: string }) {
       </header>
 
       <div className="flex min-h-0 grow flex-wrap">
-        <section aria-label={tf("name")} className="dot-grid flex min-w-0 grow-[999] basis-[560px] flex-col">
+        <section aria-label={flowName(flow)} className="dot-grid flex min-w-0 grow-[999] basis-[560px] flex-col">
           <div className="flex grow items-center overflow-x-auto px-4 py-8">
             <FlowGraph
+              flow={flow}
+              roleOf={roleOf}
               states={states}
               notes={graphNotes(events, (k, v) => t(k, v))}
-              loopActive={loopActive}
-              loopLabel={loopLabel}
+              defaultRounds={task.maxRounds}
+              handBack={handBack}
+              round={task.round}
               selected={filter}
               onSelect={(a) => setFilter((cur) => (cur === a ? null : a))}
             />
@@ -207,12 +220,12 @@ export function RunView({ taskId }: { taskId: string }) {
               </div>
             </div>
           )}
-          <RunTimeline segments={segs} start={bounds.start} end={replayAt === null ? bounds.end : Math.max(bounds.start + 1000, new Date(events.at(-1)?.ts ?? task.createdAt).getTime())} live={live || replayAt !== null} />
+          <RunTimeline actors={flowActors(flow)} roleOf={roleOf} segments={segs} start={bounds.start} end={replayAt === null ? bounds.end : Math.max(bounds.start + 1000, new Date(events.at(-1)?.ts ?? task.createdAt).getTime())} live={live || replayAt !== null} />
         </section>
 
         <aside aria-label={t("everything")} className="flex max-h-[calc(100vh-61px)] min-h-[420px] max-w-[440px] grow basis-[360px] flex-col border-l border-border bg-panel">
           <nav aria-label={t("everything")} className="flex flex-wrap gap-1.5 border-b border-border px-4 py-3">
-            {FILTERS.map((f) => (
+            {filters.map((f) => (
               <button
                 key={f ?? "all"}
                 type="button"
@@ -253,7 +266,7 @@ export function RunView({ taskId }: { taskId: string }) {
             <ActivityFeed events={events} filter={filter} live={live} messagesOnly={messagesOnly} />
             {task.error && <p className="mt-3 text-[13px] text-danger">{task.error}</p>}
           </div>
-          {replayAt === null && <Composer task={task} autoFocus={focusReply} />}
+          {replayAt === null && <Composer task={task} autoFocus={focusReply} activeBuilder={activeBuilder} />}
         </aside>
       </div>
     </div>

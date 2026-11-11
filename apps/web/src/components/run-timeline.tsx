@@ -2,21 +2,36 @@
 
 import { useTranslations } from "next-intl";
 import type { Actor } from "@forgeboard/shared";
+import type { RoleOf } from "@/lib/flow-view";
 import type { Segment } from "@/lib/run-model";
 import { cn } from "@/lib/utils";
 import { useActorName } from "./glyph";
 import { SectionLabel } from "./ui";
 
-const LANES: Actor[] = ["forge", "checks", "hawk", "you"];
-const COLOR: Record<string, string> = {
+const FIXED: Record<string, string> = {
   forge: "bg-accent",
   checks: "bg-muted",
   hawk: "bg-info",
   you: "bg-transparent border border-dashed border-violet",
 };
 
-/** When each agent was busy during the run. */
-export function RunTimeline({ segments, start, end, live }: { segments: Segment[]; start: number; end: number; live: boolean }) {
+/** When each agent was busy during the run, one lane per actor of the task's flow. */
+export function RunTimeline({
+  actors,
+  roleOf,
+  segments,
+  start,
+  end,
+  live,
+}: {
+  actors: Actor[];
+  roleOf: RoleOf;
+  segments: Segment[];
+  start: number;
+  end: number;
+  live: boolean;
+}) {
+  const color = (actor: Actor) => FIXED[actor] ?? (roleOf(actor) === "reviewer" ? "bg-success" : "bg-warning");
   const t = useTranslations("run");
   const name = useActorName();
   const span = end - start;
@@ -34,7 +49,7 @@ export function RunTimeline({ segments, start, end, live }: { segments: Segment[
         )}
       </div>
       <div className="flex flex-col gap-1">
-        {LANES.map((actor) => (
+        {actors.map((actor) => (
           <div key={actor} className="flex h-5 items-center gap-2.5">
             <span className="w-24 shrink-0 truncate text-[11.5px] text-muted">{name(actor)}</span>
             <span className="relative h-2.5 grow">
@@ -45,7 +60,7 @@ export function RunTimeline({ segments, start, end, live }: { segments: Segment[
                   return (
                     <span
                       key={`${actor}-${s.start}`}
-                      className={cn("absolute top-0 h-2.5 min-w-1 rounded-[3px]", COLOR[actor], s.end === null && "shadow-[0_0_10px_rgba(249,115,22,.5)]")}
+                      className={cn("absolute top-0 h-2.5 min-w-1 rounded-[3px]", color(actor), s.end === null && "shadow-[0_0_10px_rgba(249,115,22,.5)]")}
                       style={{ left: pct(s.start), width: `calc(${pct(segEnd)} - ${pct(s.start)})` }}
                     />
                   );
