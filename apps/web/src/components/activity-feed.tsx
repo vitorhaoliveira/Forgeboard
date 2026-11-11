@@ -278,7 +278,7 @@ function EventItem({ event, form }: { event: RunEvent; form?: AgentForm }) {
     case "verdict":
       return (
         <div className="flex gap-2.5">
-          <Glyph actor="hawk" />
+          <Glyph actor={event.actor} />
           <div className="min-w-0 grow">
             <VerdictBlock verdict={event.verdict} />
           </div>
@@ -321,7 +321,7 @@ function EventItem({ event, form }: { event: RunEvent; form?: AgentForm }) {
       return (
         <div className="flex items-center gap-3 py-0.5 text-[11.5px] text-muted">
           <span className="h-px grow bg-border" />
-          {t("steered", { name: name("forge") })}
+          {t("steered", { name: name(event.agentId ?? "forge") })}
           <span className="h-px grow bg-border" />
         </div>
       );
@@ -344,7 +344,7 @@ function EventItem({ event, form }: { event: RunEvent; form?: AgentForm }) {
       return (
         <div className="ml-9 flex items-center gap-2 text-[12.5px] text-muted">
           <ArrowRight className="size-3.5" aria-hidden="true" />
-          {event.actor === "hawk" && event.label
+          {event.to !== "checks" && event.label
             ? tf("issuesTo", { count: Number(event.label), name: name(event.to) })
             : t("handoff", { name: name(event.to) })}
         </div>

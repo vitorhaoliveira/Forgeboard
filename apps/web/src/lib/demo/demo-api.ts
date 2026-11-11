@@ -11,6 +11,7 @@ import type {
   CreateTaskInput,
   CreateWorkspaceInput,
   DiffFile,
+  Flow,
   HouseRule,
   Locale,
   ProviderInfo,
@@ -24,6 +25,7 @@ import type {
   Verdict,
   Workspace,
 } from "@forgeboard/shared";
+import { BUILD_AND_REVIEW } from "@forgeboard/shared";
 import type { Api, StreamHandlers } from "../api";
 import { sanitizeAnswer } from "@forgeboard/shared/a2ui";
 import {
@@ -54,6 +56,8 @@ interface Store {
   defaults: Agent[];
   overrides: Map<string, Agent[]>;
   rules: HouseRule[];
+  /** Flows the visitor made (Build & Review is built in). */
+  flows: Flow[];
   /** Steps left to play once the visitor acts (after a question). */
   pending: Map<string, Step[]>;
   timers: Map<string, ReturnType<typeof setTimeout>[]>;
@@ -324,6 +328,7 @@ function seed(locale: Locale): Store {
     scenarios: new Map(),
     defaults,
     overrides: new Map([[acme.id, acmeCrew]]),
+    flows: [],
     rules: [
       { id: id(), scope: "global", workspaceId: null, repoId: null, text: tr(L, "Conventional commits, in English", "Conventional commits, em inglês"), enabled: true, source: "you", createdAt: iso(ago(6000)) },
       { id: id(), scope: "workspace", workspaceId: acme.id, repoId: null, text: tr(L, "Never use `any` in TypeScript", "Nunca usar `any` no TypeScript"), enabled: true, source: "you", createdAt: iso(ago(5000)) },
@@ -542,6 +547,26 @@ export const demoApi: Api = {
     const st = s();
     if (!workspaceId) st.defaults = st.defaults.filter((a) => a.id !== agentId || a.builtIn);
     else st.overrides.set(workspaceId, clone(crewFor(workspaceId)).filter((a) => a.id !== agentId || a.builtIn));
+    return ok(undefined);
+  },
+
+  flows: () => ok([BUILD_AND_REVIEW, ...s().flows]),
+  createFlow: (input) => {
+    const flow: Flow = { id: id(), ...input };
+    s().flows.push(flow);
+    return ok(flow);
+  },
+  updateFlow: (flowId, input) => {
+    const st = s();
+    const flow = st.flows.find((f) => f.id === flowId);
+    if (!flow) return fail("Built-in flows can't be changed. Duplicate it instead.");
+    Object.assign(flow, input);
+    return ok(flow);
+  },
+  removeFlow: (flowId) => {
+    const st = s();
+    st.flows = st.flows.filter((f) => f.id !== flowId);
+    for (const w of st.workspaces) if (w.defaultFlowId === flowId) delete w.defaultFlowId;
     return ok(undefined);
   },
 

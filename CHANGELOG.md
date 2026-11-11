@@ -8,7 +8,17 @@ Groundwork for v2.0 (Flow studio).
 
 ### Added
 
-- **Create your own agents.** "New agent" in **Crew** (and in a workspace's own crew): pick a name, a role (**builds**: edits files and runs commands, or **reviews**: only reads and approves or sends back), the AI that runs it, a personality and extra instructions. Agents you create can be deleted; Forge and Hawk can't, and their roles are fixed. They join flows with the flow editor (next).
+- **Your own flows** (Flows). A flow is the list of steps a task goes through before it gets to you. Build it as a list, with a live preview of the graph:
+  - **agents that build**;
+  - **agents that review** and send work back to a builder, up to N rounds;
+  - **checks**;
+  - **Ask me**: a pause where you continue, or write a note that goes back to the builder before it.
+
+  Built-in flows can be duplicated. A flow is checked before it runs: it must start with a builder, and a reviewer must send work back to a builder before it.
+- **Pick the flow per task** in the task bar, with a default per workspace (workspace settings → Flow). Each task keeps a copy of its flow, so editing a flow never changes a task that already started.
+- The run screen, timeline, filters and desk cards follow the task's flow: each agent has its own node, lane and filter, and each reviewer has its own loop. Questions, verdicts and "interrupted" notes name the agent that sent them.
+- API: `GET/POST /api/flows`, `PATCH/DELETE /api/flows/:id`; `flowId` on `POST /api/tasks`; `defaultFlowId` on workspaces. An agent used by a flow can't be deleted.
+- **Create your own agents.** "New agent" in **Crew** (and in a workspace's own crew): pick a name, a role (**builds**: edits files and runs commands, or **reviews**: only reads and approves or sends back), the AI that runs it, a personality and extra instructions. Agents you create can be deleted; Forge and Hawk can't, and their roles are fixed. Add them to a flow to put them to work.
 - API: `POST /api/agents` and `DELETE /api/agents/:id` for agents you created (on Forge and Hawk, `DELETE` still resets a workspace's copy).
 
 ### Changed

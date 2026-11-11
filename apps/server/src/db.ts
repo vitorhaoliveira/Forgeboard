@@ -436,6 +436,19 @@ export const flows = {
     const r = db.prepare("SELECT data FROM flows WHERE id = ?").get(id);
     return r ? (JSON.parse(String(r.data)) as Flow) : undefined;
   },
+  save(flow: Flow): void {
+    const { builtIn: _b, ...data } = flow;
+    db.prepare(
+      "INSERT INTO flows (id, data, created_at) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+    ).run(flow.id, JSON.stringify(data), new Date().toISOString());
+  },
+  remove(id: string): void {
+    db.prepare("DELETE FROM flows WHERE id = ?").run(id);
+  },
+  /** Flows you made that use an agent, so it isn't deleted from under them. */
+  usingAgent(agentId: AgentId): Flow[] {
+    return flows.list().filter((f) => !f.builtIn && f.steps.some((s) => s.type === "agent" && s.agentId === agentId));
+  },
 };
 
 // ---------- House rules ----------

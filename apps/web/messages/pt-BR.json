@@ -51,7 +51,8 @@
     "needsRepo": "Crie um workspace primeiro",
     "destination": "Onde a tarefa roda",
     "noRepos": "Adicione um repositório a este workspace primeiro",
-    "placeholderWs": "Diga à equipe de {name} o que fazer…"
+    "placeholderWs": "Diga à equipe de {name} o que fazer…",
+    "flow": "Fluxo"
   },
   "desk": {
     "headline": "{count, plural, one {# coisa está esperando por você} other {# coisas estão esperando por você}}",
@@ -78,7 +79,8 @@
     "stillWorking": "continua trabalhando",
     "decidedCount": "Decidi {count, plural, one {# coisa} other {# coisas}} por você",
     "looksGood": "Está ótimo",
-    "correct": "Corrigir…"
+    "correct": "Corrigir…",
+    "gateTitle": "Pausa no fluxo"
   },
   "form": {
     "formTitle": "{name} tem {count, plural, one {# pergunta} other {# perguntas}}",
@@ -126,7 +128,9 @@
     "roleTask": "comece aqui",
     "roleMerge": "na sua branch",
     "issuesTo": "{count, plural, one {# problema} other {# problemas}} → {name}",
-    "loopLabel": "mudanças pedidas · até {max}×"
+    "loopLabel": "mudanças pedidas · até {max}×",
+    "ask": "Me pergunte",
+    "roleAsk": "pausa para conferir"
   },
   "run": {
     "stop": "Parar",
@@ -222,7 +226,7 @@
     "reviewerHint": "Lê a mudança e aprova ou devolve",
     "builderPlaceholder": "ex.: Escreva e atualize a documentação a cada mudança.",
     "reviewerPlaceholder": "ex.: Procure só problemas de segurança: segredos, injeção, entrada insegura.",
-    "newAgentFlows": "Para colocar para trabalhar, adicione a um fluxo (Fluxos, chegando na v2.0).",
+    "newAgentFlows": "Para colocar para trabalhar, adicione a um fluxo em Fluxos.",
     "create": "Criar agente",
     "confirmDelete": "Excluir {name}"
   },
@@ -262,8 +266,56 @@
   },
   "flows": {
     "title": "Fluxos",
-    "body": "A v1 vem com um fluxo, Construir e revisar. Montar seus próprios fluxos arrastando blocos chega na próxima versão.",
-    "rounds": "O Hawk pode devolver o trabalho até {max} vezes antes de perguntar a você."
+    "body": "Um fluxo é a lista de etapas por que uma tarefa passa antes de chegar a você: agentes que constroem, verificações, agentes que revisam e devolvem, e pausas para você.",
+    "rounds": "rodadas",
+    "builtIn": "pronto",
+    "defaultIn": "{count, plural, one {padrão em # workspace} other {padrão em # workspaces}}",
+    "edit": "Editar",
+    "duplicate": "Duplicar",
+    "confirmDelete": "Excluir fluxo",
+    "builtInDescription": "O Forge constrói, as verificações rodam, o Hawk revisa e devolve até ficar certo.",
+    "name": "Nome",
+    "namePlaceholder": "ex.: Construir, revisar, documentar",
+    "description": "Descrição",
+    "descriptionPlaceholder": "Para que serve este fluxo (opcional)",
+    "preview": "Prévia",
+    "noSteps": "Adicione uma etapa para ver o fluxo.",
+    "steps": "Etapas",
+    "agent": "Agente",
+    "builds": "constrói",
+    "reviews": "revisa",
+    "sendBackTo": "devolve para",
+    "builderBefore": "{name} (o construtor anterior)",
+    "nobody": "ninguém (segue)",
+    "roundsDefault": "padrão da tarefa",
+    "checks": "Verificações",
+    "checksHint": "testes, lint e tipos do repositório",
+    "ask": "Me pergunte",
+    "askNote": "O que conferir nesta pausa",
+    "askPlaceholder": "ex.: Confira os textos antes de escrever a documentação",
+    "moveUp": "Subir",
+    "moveDown": "Descer",
+    "removeStep": "Remover etapa",
+    "addBuilder": "Agente que constrói",
+    "addReviewer": "Agente que revisa",
+    "addChecks": "Verificações",
+    "addAsk": "Me pergunte",
+    "endsWithYou": "Todo fluxo termina com você: revisar a mudança e fazer o merge, devolver ou descartar.",
+    "crewNote": "Usa a equipe padrão. Um workspace com equipe própria precisa dos mesmos agentes para rodar este fluxo.",
+    "create": "Criar fluxo",
+    "newFlow": "Novo fluxo",
+    "copyOf": "{name} (cópia)",
+    "problem": {
+      "name": "Dê um nome ao fluxo.",
+      "empty": "Adicione pelo menos uma etapa.",
+      "tooMany": "Um fluxo pode ter no máximo {max} etapas.",
+      "duplicateId": "A etapa {position} repete um id.",
+      "firstNotBuilder": "A primeira etapa precisa ser um agente que constrói.",
+      "unknownAgent": "A etapa {position} usa {name}, que não está na equipe padrão.",
+      "sendBackNotBuilder": "A etapa {position} precisa devolver para um construtor antes dela.",
+      "builderSendBack": "A etapa {position} constrói, então não pode devolver trabalho.",
+      "rounds": "Etapa {position}: as rodadas precisam ficar entre 1 e {max}."
+    }
   },
   "ws": {
     "all": "Todos os workspaces",
@@ -377,7 +429,9 @@
     "interruptHint": "Sua mensagem entra na hora: o agente para a etapa e retoma com ela. Desligado, ela espera a próxima pausa. Dá para trocar em cada mensagem.",
     "notify": "Avisar no navegador quando precisarem de mim",
     "notifyHint": "Notificação do sistema quando um agente pergunta ou termina a revisão, se o Forgeboard não estiver na tela. Vale para este navegador.",
-    "notifyUnsupported": "Este navegador não permite notificações."
+    "notifyUnsupported": "Este navegador não permite notificações.",
+    "flowTitle": "Fluxo",
+    "flowHint": "As tarefas novas deste workspace rodam este fluxo, a menos que você escolha outro na barra de tarefas."
   },
   "demo": {
     "banner": "Demo ao vivo: uma equipe simulada roda no seu navegador. Nenhuma IA é chamada e nenhum repositório real é tocado.",

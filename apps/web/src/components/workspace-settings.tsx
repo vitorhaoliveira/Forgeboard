@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslations } from "next-intl";
 import { Check, Loader2, Plus, Trash2 } from "lucide-react";
-import type { CheckCommand, ForgeCommands, Repo, WorkspaceColor } from "@forgeboard/shared";
+import { BUILD_AND_REVIEW_ID, type CheckCommand, type ForgeCommands, type Repo, type WorkspaceColor } from "@forgeboard/shared";
 import { api } from "@/lib/api";
 import { useAppState, WorkspaceScope } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
 import { AgentCard, NewAgentCard } from "./crew-view";
+import { useFlowName } from "./flow-graph";
 import { ColorPicker } from "./new-workspace-dialog";
 import { RulesEditor, type RuleTarget } from "./rules-editor";
 import { Button, Card, Chip } from "./ui";
@@ -164,7 +165,8 @@ export function WorkspaceSettings({ workspaceId }: { workspaceId: string }) {
   const tw = useTranslations("ws");
   const tc = useTranslations("common");
   const router = useRouter();
-  const { workspace, repos: allRepos, crews, loaded, agentName, refreshWorkspaces, refreshRepos, refreshCrews } = useAppState();
+  const { workspace, repos: allRepos, crews, loaded, agentName, refreshWorkspaces, refreshRepos, refreshCrews, flows } = useAppState();
+  const flowName = useFlowName();
   const ws = workspace(workspaceId);
   const repos = allRepos.filter((r) => r.workspaceId === workspaceId);
 
@@ -348,6 +350,23 @@ export function WorkspaceSettings({ workspaceId }: { workspaceId: string }) {
                   <NewAgentCard workspaceId={workspaceId} count={(crews[workspaceId] ?? []).length} />
                 </div>
               )}
+            </Section>
+
+            <Section id="flow" title={t("flowTitle")}>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[12.5px] text-muted">{t("flowHint")}</span>
+                <select
+                  value={ws.defaultFlowId && flows.some((f) => f.id === ws.defaultFlowId) ? ws.defaultFlowId : BUILD_AND_REVIEW_ID}
+                  onChange={(e) => updateWs({ defaultFlowId: e.target.value })}
+                  className="h-[34px] max-w-sm rounded-lg border border-border bg-panel-2 px-2.5 text-[13px] outline-none"
+                >
+                  {flows.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {flowName(f)}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </Section>
 
             <Section id="conversation" title={t("conversation")}>

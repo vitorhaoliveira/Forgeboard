@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { Loader2, SendHorizontal } from "lucide-react";
 import { isFinished, type MessageDelivery, type Task } from "@forgeboard/shared";
 import { api } from "@/lib/api";
+import { useTaskAgents } from "@/lib/use-task-agents";
 import { useAppState } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui";
@@ -14,7 +15,7 @@ import { Button } from "./ui";
  * an answer while it waits, a send-back with notes during review, and a message
  * Forge reads now (or at its next step) while it works.
  */
-export function Composer({ task, autoFocus }: { task: Task; autoFocus?: boolean }) {
+export function Composer({ task, autoFocus, activeBuilder }: { task: Task; autoFocus?: boolean; activeBuilder?: string | null }) {
   const t = useTranslations("composer2");
   const { agentName, refreshTasks, workspace } = useAppState();
   const [text, setText] = useState("");
@@ -22,7 +23,12 @@ export function Composer({ task, autoFocus }: { task: Task; autoFocus?: boolean 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
-  const forge = agentName("forge", task.workspaceId);
+  const { notesTo } = useTaskAgents(task);
+  // Who reads it: the agent that asked, the builder working now, or the last builder (where notes go).
+  const forge = agentName(
+    (task.status === "waiting" && task.question?.askedBy) || (task.status === "running" && activeBuilder) || notesTo,
+    task.workspaceId,
+  );
 
   useEffect(() => {
     if (autoFocus) ref.current?.focus();

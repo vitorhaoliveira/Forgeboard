@@ -6,6 +6,8 @@ import {
   type CreateTaskInput,
   type CreateWorkspaceInput,
   type DiffFile,
+  type Flow,
+  type FlowInput,
   type FormAnswer,
   type MessageDelivery,
   type HouseRule,
@@ -84,6 +86,12 @@ const realApi = {
   createAgent: (input: CreateAgentInput, workspaceId?: string) => request<Agent>(`/api/agents${wsQuery(workspaceId)}`, post(input)),
   /** Deletes an agent you created (built-in agents can only be reset). */
   removeAgent: (id: string, workspaceId?: string) => request<void>(`/api/agents/${id}${wsQuery(workspaceId)}`, del),
+
+  /** Built-in flows first, then the ones you made. */
+  flows: () => request<Flow[]>("/api/flows"),
+  createFlow: (input: FlowInput) => request<Flow>("/api/flows", post(input)),
+  updateFlow: (id: string, input: FlowInput) => request<Flow>(`/api/flows/${id}`, patch(input)),
+  removeFlow: (id: string) => request<void>(`/api/flows/${id}`, del),
 
   rules: (scope: RuleScope, id?: string) => request<HouseRule[]>(`/api/rules?scope=${scope}${id ? `&id=${id}` : ""}`),
   addRule: (scope: RuleScope, id: string | null, text: string, source: RuleSource = "you") =>

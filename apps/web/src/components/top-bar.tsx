@@ -3,11 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { ChevronDown, Loader2, Sparkles } from "lucide-react";
-import { isActive, type Locale, type Task } from "@forgeboard/shared";
+import { ChevronDown, Loader2, Sparkles, Workflow } from "lucide-react";
+import { BUILD_AND_REVIEW_ID, isActive, type Locale, type Task } from "@forgeboard/shared";
 import { api } from "@/lib/api";
 import { useAppState } from "@/lib/app-state";
 import { cn, formatCost } from "@/lib/utils";
+import { useFlowName } from "./flow-graph";
 import { Button, Kbd } from "./ui";
 
 /**
@@ -18,9 +19,11 @@ export function Composer({ workspaceId, repoId: preferredRepo, className }: { wo
   const t = useTranslations("composer");
   const router = useRouter();
   const locale = useLocale() as Locale;
-  const { repos, activeWorkspaces, workspace, lastRepoId, rememberRepo, refreshTasks } = useAppState();
+  const { repos, activeWorkspaces, workspace, lastRepoId, rememberRepo, refreshTasks, flows } = useAppState();
+  const flowName = useFlowName();
   const [prompt, setPrompt] = useState("");
   const [repoId, setRepoId] = useState<string>("");
+  const [flowId, setFlowId] = useState<string>(BUILD_AND_REVIEW_ID);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,13 +38,18 @@ export function Composer({ workspaceId, repoId: preferredRepo, className }: { wo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [choices.map((r) => r.id).join(","), preferredRepo, lastRepoId]);
 
+  // The flow follows the chosen repo's workspace default until you pick another.
+  const repoWs = workspace(repos.find((r) => r.id === repoId)?.workspaceId);
+  const wsDefault = repoWs?.defaultFlowId && flows.some((f) => f.id === repoWs.defaultFlowId) ? repoWs.defaultFlowId : BUILD_AND_REVIEW_ID;
+  useEffect(() => setFlowId(wsDefault), [wsDefault]);
+
   async function submit(e?: FormEvent) {
     e?.preventDefault();
     if (!repoId || !prompt.trim() || busy) return;
     setBusy(true);
     setError(null);
     try {
-      const task = await api.createTask({ repoId, prompt: prompt.trim(), locale });
+      const task = await api.createTask({ repoId, prompt: prompt.trim(), locale, flowId });
       rememberRepo(repoId);
       setPrompt("");
       void refreshTasks();
@@ -101,6 +109,20 @@ export function Composer({ workspaceId, repoId: preferredRepo, className }: { wo
                         ))}
                     </optgroup>
                   ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2 size-3 text-muted" aria-hidden="true" />
+          </label>
+        )}
+        {flows.length > 1 && choices.length > 0 && (
+          <label className="relative inline-flex h-[30px] max-w-[180px] shrink-0 items-center gap-1.5 rounded-lg border border-border bg-panel-2 pr-7 pl-2 text-xs">
+            <Workflow className="size-3.5 shrink-0 text-muted" aria-hidden="true" />
+            <span className="sr-only">{t("flow")}</span>
+            <select value={flowId} onChange={(e) => setFlowId(e.target.value)} className="min-w-0 appearance-none truncate bg-transparent outline-none">
+              {flows.map((f) => (
+                <option key={f.id} value={f.id} className="bg-panel">
+                  {flowName(f)}
+                </option>
+              ))}
             </select>
             <ChevronDown className="pointer-events-none absolute right-2 size-3 text-muted" aria-hidden="true" />
           </label>

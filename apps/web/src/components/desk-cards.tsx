@@ -3,12 +3,13 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useState, type FormEvent, type ReactNode } from "react";
+import { Fragment, useCallback, useState, type FormEvent, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { GitMerge, Loader2 } from "lucide-react";
 import type { FormAnswer, Task } from "@forgeboard/shared";
 import { summarizeAnswer } from "@forgeboard/shared/a2ui";
 import { api } from "@/lib/api";
+import { useTaskAgents } from "@/lib/use-task-agents";
 import { useAppState, WorkspaceScope } from "@/lib/app-state";
 import { cn, formatCost, timeAgo } from "@/lib/utils";
 import { Glyph } from "./glyph";
@@ -28,6 +29,9 @@ export function QuestionCard({ task, compact, showRepo }: { task: Task; compact?
   const locale = useLocale();
   const router = useRouter();
   const { agentName, refreshTasks, repo } = useAppState();
+  const { builder } = useTaskAgents(task);
+  const gate = Boolean(task.question?.gate);
+  const asker = task.question?.askedBy ?? builder;
   const [custom, setCustom] = useState(false);
   const [text, setText] = useState("");
   // Off by default: most answers are about this task only. Tick it for real conventions.
@@ -45,13 +49,13 @@ export function QuestionCard({ task, compact, showRepo }: { task: Task; compact?
       isPlan ? (
         <div className="flex flex-wrap items-center gap-2.5">
           <label htmlFor={`note-${task.id}`} className="sr-only">
-            {tf("noteLabel", { name: agentName("forge", task.workspaceId) })}
+            {tf("noteLabel", { name: agentName(asker, task.workspaceId) })}
           </label>
           <input
             id={`note-${task.id}`}
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder={tf("notePlaceholder", { name: agentName("forge", task.workspaceId) })}
+            placeholder={tf("notePlaceholder", { name: agentName(asker, task.workspaceId) })}
             className="h-9 min-w-0 flex-[1_1_260px] rounded-lg border border-border bg-bg px-3 text-[13px] outline-none focus:border-border-strong"
           />
           <Button className="h-9" disabled={busy} onClick={() => void answer(tf("replanText"), { replan: true, note: note.trim() || undefined })}>
@@ -110,13 +114,15 @@ export function QuestionCard({ task, compact, showRepo }: { task: Task; compact?
     <WorkspaceScope workspaceId={task.workspaceId}>
     <article className="flex flex-col gap-3 rounded-2xl border border-accent/50 bg-panel p-[18px] shadow-[0_0_0_4px_rgba(249,115,22,.06)]">
       <div className="flex flex-wrap items-center gap-2.5">
-        <Glyph actor="forge" />
+        <Glyph actor={gate ? "you" : asker} />
         <span className="text-xs font-medium text-accent">
-          {form
-            ? isPlan
-              ? tf("planTitle", { name: agentName("forge", task.workspaceId) })
-              : tf("formTitle", { name: agentName("forge", task.workspaceId), count: form.fields.length })
-            : t("title", { name: agentName("forge", task.workspaceId) })}
+          {gate
+            ? t("gateTitle")
+            : form
+              ? isPlan
+                ? tf("planTitle", { name: agentName(asker, task.workspaceId) })
+                : tf("formTitle", { name: agentName(asker, task.workspaceId), count: form.fields.length })
+              : t("title", { name: agentName(asker, task.workspaceId) })}
         </span>
         {showRepo && <Chip className="h-[22px] font-mono">{repo(task.repoId)?.name ?? "—"}</Chip>}
         {!compact && (
@@ -178,10 +184,12 @@ export function QuestionCard({ task, compact, showRepo }: { task: Task; compact?
                 {option}
               </button>
             ))}
-            <label className="ml-auto inline-flex items-center gap-2 text-[12px] text-muted">
-              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="accent-accent" />
-              {t("remember")}
-            </label>
+            {!gate && (
+              <label className="ml-auto inline-flex items-center gap-2 text-[12px] text-muted">
+                <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="accent-accent" />
+                {t("remember")}
+              </label>
+            )}
           </div>
         </>
       )}
@@ -217,6 +225,8 @@ export function ReviewCard({ task, showRepo }: { task: Task; showRepo?: boolean 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const v = task.verdict;
+  const { reviewer: lastReviewer } = useTaskAgents(task);
+  const reviewer = v?.by ?? lastReviewer;
   const checks = task.checks ?? [];
   const passed = checks.filter((c) => c.ok).length;
   const approved = Boolean(v?.approved);
@@ -237,13 +247,13 @@ export function ReviewCard({ task, showRepo }: { task: Task; showRepo?: boolean 
     <WorkspaceScope workspaceId={task.workspaceId}>
     <article className="flex flex-col gap-3 rounded-2xl border border-border bg-panel p-[18px]">
       <div className="flex flex-wrap items-center gap-2.5">
-        <Glyph actor="hawk" />
+        <Glyph actor={reviewer} />
         <span className={cn("text-xs font-medium", approved ? "text-success" : "text-warning")}>
           {approved ? t("ready") : t("concerns")}
         </span>
         {showRepo && <Chip className="h-[22px] font-mono">{repo(task.repoId)?.name ?? "—"}</Chip>}
         <span className="text-[12.5px] text-muted">
-          · {t(approved ? "approvedBy" : "notApproved", { name: agentName("hawk", task.workspaceId), count: task.round })}
+          · {t(approved ? "approvedBy" : "notApproved", { name: agentName(reviewer, task.workspaceId), count: task.round })}
         </span>
         {v && (
           <Chip className="ml-auto" tone={v.risk === "low" ? "success" : v.risk === "high" ? "danger" : "warning"}>
@@ -285,6 +295,7 @@ export function WorkingCard({ task }: { task: Task }) {
   const tc = useTranslations("common");
   const ts = useTranslations("status");
   const locale = useLocale();
+  const { flow } = useTaskAgents(task);
   return (
     <Link href={`/runs/${task.id}`} className="flex flex-col gap-2.5 rounded-2xl border border-border bg-panel p-3.5 hover:border-border-strong">
       <span className="flex items-center gap-2">
@@ -292,11 +303,12 @@ export function WorkingCard({ task }: { task: Task }) {
         <span className="ml-auto shrink-0 font-mono text-xs text-muted">{timeAgo(task.createdAt, locale)}</span>
       </span>
       <span className="flex items-center gap-0">
-        <Glyph actor="forge" size={22} />
-        <span className="h-0.5 w-3.5 bg-border-strong" />
-        <Glyph actor="checks" size={22} />
-        <span className="h-0.5 w-3.5 bg-border-strong" />
-        <Glyph actor="hawk" size={22} />
+        {flow.steps.map((step, i) => (
+          <Fragment key={step.id}>
+            {i > 0 && <span className="h-0.5 w-3.5 bg-border-strong" />}
+            <Glyph actor={step.type === "agent" ? step.agentId : step.type === "checks" ? "checks" : "you"} size={22} />
+          </Fragment>
+        ))}
         <span className="ml-2.5 text-xs text-info">{task.round > 0 ? tc("round", { round: task.round, max: task.maxRounds }) : ts("queued")}</span>
       </span>
     </Link>
@@ -315,7 +327,7 @@ export function RecentRow({ task }: { task: Task }) {
   );
 }
 
-/** Tasks with decisions Forge made on its own that you haven't looked at yet. */
+/** Tasks with decisions a builder made on its own that you haven't looked at yet. */
 export function toCheck(tasks: Task[]): Task[] {
   return tasks.filter((x) => (x.assumptions?.length ?? 0) > 0 && !x.assumptionsAck && x.status !== "discarded" && x.status !== "cancelled");
 }
@@ -324,6 +336,7 @@ export function toCheck(tasks: Task[]): Task[] {
 export function AssumptionsCard({ task, showRepo }: { task: Task; showRepo?: boolean }) {
   const t = useTranslations("question");
   const { agentName, refreshTasks, repo } = useAppState();
+  const { builder } = useTaskAgents(task);
   const [busy, setBusy] = useState(false);
   const items = task.assumptions ?? [];
 
@@ -338,8 +351,8 @@ export function AssumptionsCard({ task, showRepo }: { task: Task; showRepo?: boo
     <WorkspaceScope workspaceId={task.workspaceId}>
       <article className="flex flex-col gap-2.5 rounded-2xl border border-border bg-panel p-4">
         <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-muted">
-          <Glyph actor="forge" />
-          <span className="font-medium text-accent">{agentName("forge", task.workspaceId)}</span>
+          <Glyph actor={builder} />
+          <span className="font-medium text-accent">{agentName(builder, task.workspaceId)}</span>
           {showRepo && <Chip className="h-[22px] font-mono">{repo(task.repoId)?.name ?? "—"}</Chip>}
           <Link href={`/runs/${task.id}`} className="hover:text-text">
             {task.title}

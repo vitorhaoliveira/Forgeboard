@@ -127,7 +127,7 @@ type BuilderMode =
 /** Messages you sent while the crew worked, waiting for the next builder step. */
 const inbox = new Map<string, string[]>();
 /** The builder step running now, so a message can interrupt it. */
-const builderSteps = new Map<string, AbortController>();
+const builderSteps = new Map<string, { abort: AbortController; agentId: string }>();
 
 type AgentStep = Extract<FlowStep, { type: "agent" }>;
 
@@ -224,7 +224,7 @@ async function builderStep(taskId: string, step: AgentStep, mode: BuilderMode, s
   const stepAbort = new AbortController();
   const stopStep = () => stepAbort.abort();
   signal.addEventListener("abort", stopStep, { once: true });
-  builderSteps.set(taskId, stepAbort);
+  builderSteps.set(taskId, { abort: stepAbort, agentId: agent.id });
   let output;
   try {
     output = await getProvider(agent.provider).run({
@@ -250,7 +250,7 @@ async function builderStep(taskId: string, step: AgentStep, mode: BuilderMode, s
     throw err;
   } finally {
     signal.removeEventListener("abort", stopStep);
-    if (builderSteps.get(taskId) === stepAbort) builderSteps.delete(taskId);
+    if (builderSteps.get(taskId)?.abort === stepAbort) builderSteps.delete(taskId);
   }
   saveSession(taskId, step.id, output.sessionId);
   addCost(taskId, output.costUsd);
@@ -258,11 +258,11 @@ async function builderStep(taskId: string, step: AgentStep, mode: BuilderMode, s
   const question = formQuestion(taskId, output.text, task.locale) ?? parseQuestion(output.text);
   if (question) {
     // The provider already streamed the message itself; the UI hides the marker line.
-    emit(taskId, { type: "question", actor: agent.id, question });
+    emit(taskId, { type: "question", actor: agent.id, question: { ...question, askedBy: agent.id } });
     node(taskId, step.id, "warn");
     node(taskId, "you", "active");
     taskState.set(taskId, { resumeStep: step.id });
-    setStatus(taskId, "waiting", { question });
+    setStatus(taskId, "waiting", { question: { ...question, askedBy: agent.id } });
     return "question";
   }
 
@@ -356,6 +356,7 @@ async function reviewerStep(
     if (!allPassed) verdict.approved = false;
   }
 
+  verdict.by = agent.id;
   emit(taskId, { type: "verdict", actor: agent.id, verdict, round: task.round });
   tasks.update(taskId, { verdict });
   node(taskId, step.id, verdict.approved ? "done" : "warn");
@@ -374,17 +375,25 @@ function nextRound(taskId: string, raiseLimit: boolean): void {
  * work back to their builder until they approve or rounds run out. Stops early when an agent
  * asks a question. At the end the task waits for you.
  */
-async function runFlow(taskId: string, fromStep: string, firstMode: BuilderMode, signal: AbortSignal): Promise<void> {
-  const flow = flowOf(tasks.get(taskId)!);
-  let i = flow.steps.findIndex((s) => s.id === fromStep);
-  if (i === -1) throw new FlowError(`This flow has no step "${fromStep}".`);
+async function runFlow(taskId: string, from: string | number, firstMode: BuilderMode, signal: AbortSignal): Promise<void> {
+  const start = tasks.get(taskId)!;
+  const flow = flowOf(start);
+  let i = typeof from === "number" ? from : flow.steps.findIndex((s) => s.id === from);
+  if (i === -1) throw new FlowError(`This flow has no step "${String(from)}".`);
   let mode = firstMode;
-  let checks: CheckResult[] | null = null;
-  let builder: Agent | null = null;
+  // Starting mid-flow (after a pause): the checks and the builder before this point still count.
+  let checks: CheckResult[] | null = i > 0 ? start.checks : null;
+  const before = flow.steps.slice(0, i).reverse().find((s) => isBuilder(start, s)) as AgentStep | undefined;
+  let builder: Agent | null = before ? agents.get(start.workspaceId, before.agentId) : null;
 
   while (i < flow.steps.length) {
     const task = tasks.get(taskId)!;
     const step = flow.steps[i]!;
+
+    if (step.type === "ask") {
+      askYou(taskId, step);
+      return;
+    }
 
     if (step.type === "checks") {
       checks = await checksStep(taskId, step.id, builder?.id ?? "system", signal);
@@ -428,6 +437,26 @@ async function runFlow(taskId: string, fromStep: string, firstMode: BuilderMode,
 
   node(taskId, "you", "active");
   setStatus(taskId, "review");
+}
+
+const CONTINUE = { "pt-BR": "Continuar", "en-US": "Continue" } as const;
+
+/** An "Ask me" step: the run pauses until you continue or send a note back. */
+function askYou(taskId: string, step: Extract<FlowStep, { type: "ask" }>): void {
+  const task = tasks.get(taskId)!;
+  const pt = task.locale === "pt-BR";
+  const question: AgentQuestion = {
+    question: step.note?.trim() || (pt ? "Pausa para você conferir antes de seguir." : "Paused for you to check before going on."),
+    context: pt ? "Continue, ou escreva o que mudar: volta para quem construiu." : "Continue, or write what to change: it goes back to whoever built it.",
+    options: [CONTINUE[task.locale]],
+    suggested: 0,
+    gate: true,
+  };
+  node(taskId, step.id, "active");
+  emit(taskId, { type: "question", actor: "system", question });
+  node(taskId, "you", "active");
+  taskState.set(taskId, { resumeStep: step.id });
+  setStatus(taskId, "waiting", { question });
 }
 
 /** Runs work in the background with a stop handle, turning failures into task states. */
@@ -494,6 +523,7 @@ export function answerQuestion(
 ): void {
   const task = tasks.get(taskId);
   if (!task || task.status !== "waiting" || !task.question) throw new FlowError("This task isn't waiting for an answer.");
+  if (task.question.gate) return answerGate(task, answer);
   const form = task.question.form;
   const replan = Boolean(form && extra.replan);
   // A reply typed in the conversation (no form data) goes to Forge as free text.
@@ -533,6 +563,31 @@ export function answerQuestion(
   );
 }
 
+/** Your reply at an "Ask me" step: its first option continues the flow; anything else is a note for the builder before it. */
+function answerGate(task: Task, answer: string): void {
+  const taskId = task.id;
+  const flow = flowOf(task);
+  const gateId = taskState.get(taskId).resumeStep;
+  const gate = flow.steps.findIndex((s) => s.id === gateId);
+  if (gate === -1) throw new FlowError("This task isn't paused at a step of its flow.");
+  const proceed = answer.trim().toLowerCase() === (task.question?.options[0] ?? "").toLowerCase();
+
+  emit(taskId, { type: "answer", actor: "you", text: answer, remember: false });
+  node(taskId, "you", "done");
+  if (proceed) {
+    node(taskId, gateId!, "done");
+    setStatus(taskId, "running", { question: null });
+    drive(taskId, (signal) => runFlow(taskId, gate + 1, { kind: "start" }, signal));
+    return;
+  }
+  const back = flow.steps.slice(0, gate).map((s, i) => [s, i] as const).reverse().find(([s]) => isBuilder(task, s));
+  if (!back) throw new FlowError("There's no agent before this pause to send the note to.");
+  node(taskId, gateId!, "warn");
+  nextRound(taskId, true);
+  setStatus(taskId, "running", { question: null });
+  drive(taskId, (signal) => runFlow(taskId, back[1], { kind: "notes", notes: answer }, signal));
+}
+
 /**
  * A message from you, whatever the task is doing:
  * - waiting for an answer: it is the answer;
@@ -548,12 +603,12 @@ export function sendMessage(taskId: string, text: string, delivery: MessageDeliv
 
   // "Now" only interrupts while a builder is working; during checks or review it waits for the next builder step.
   const step = builderSteps.get(taskId);
-  const interrupts = delivery === "now" && step !== undefined && !step.signal.aborted;
+  const interrupts = delivery === "now" && step !== undefined && !step.abort.signal.aborted;
   emit(taskId, { type: "message", actor: "you", text, delivery: interrupts ? "now" : "later" });
   inbox.set(taskId, [...(inbox.get(taskId) ?? []), text]);
   if (interrupts) {
-    emit(taskId, { type: "steer", actor: "system" });
-    step.abort();
+    emit(taskId, { type: "steer", actor: "system", agentId: step.agentId });
+    step.abort.abort();
   }
 }
 
