@@ -386,8 +386,7 @@ function describeProblem(p: FlowProblem): string {
 
 /** Throws when a flow can't run with a crew (the default crew when no workspace is given). */
 function checkFlow(flow: Pick<Flow, "name" | "steps">, workspaceId?: string): void {
-  const crew = agents.forWorkspace(workspaceId);
-  const problems = validateFlow(flow, (id) => crew.find((a) => a.id === id)?.role);
+  const problems = validateFlow(flow, (id) => agents.forFlow(workspaceId, id)?.role);
   if (problems.length) throw new HttpError(400, describeProblem(problems[0]!));
 }
 

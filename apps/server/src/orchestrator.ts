@@ -148,7 +148,7 @@ function flowOf(task: Task): Flow {
 }
 
 function isBuilder(task: Task, step: FlowStep): step is AgentStep {
-  return step.type === "agent" && agents.get(task.workspaceId, step.agentId).role === "builder";
+  return step.type === "agent" && agents.forStep(task.workspaceId, step.agentId).role === "builder";
 }
 
 /** The step a reviewer sends work back to: its `sendBackTo`, or the closest builder before it. */
@@ -201,7 +201,7 @@ function formQuestion(taskId: string, text: string, locale: Locale): AgentQuesti
 async function builderStep(taskId: string, step: AgentStep, mode: BuilderMode, signal: AbortSignal): Promise<"question" | "done"> {
   const task = tasks.get(taskId)!;
   const { worktree } = requireWorktree(taskId);
-  const agent = agents.get(task.workspaceId, step.agentId);
+  const agent = agents.forStep(task.workspaceId, step.agentId);
   const repoRules = rules.forRepo(repos.get(task.repoId)!);
   const commands: ForgeCommands = workspaces.get(task.workspaceId)?.forgeCommands ?? "standard";
   const style = styleFor(task.workspaceId);
@@ -318,7 +318,7 @@ async function reviewerStep(
 ): Promise<Verdict> {
   const task = tasks.get(taskId)!;
   const { worktree, baseSha } = requireWorktree(taskId);
-  const agent = agents.get(task.workspaceId, step.agentId);
+  const agent = agents.forStep(task.workspaceId, step.agentId);
   const files = await git.diff(worktree, baseSha);
 
   node(taskId, step.id, "active");
@@ -384,7 +384,7 @@ async function runFlow(taskId: string, from: string | number, firstMode: Builder
   // Starting mid-flow (after a pause): the checks and the builder before this point still count.
   let checks: CheckResult[] | null = i > 0 ? start.checks : null;
   const before = flow.steps.slice(0, i).reverse().find((s) => isBuilder(start, s)) as AgentStep | undefined;
-  let builder: Agent | null = before ? agents.get(start.workspaceId, before.agentId) : null;
+  let builder: Agent | null = before ? agents.forStep(start.workspaceId, before.agentId) : null;
 
   while (i < flow.steps.length) {
     const task = tasks.get(taskId)!;
@@ -401,7 +401,7 @@ async function runFlow(taskId: string, from: string | number, firstMode: Builder
       continue;
     }
 
-    const agent = agents.get(task.workspaceId, step.agentId);
+    const agent = agents.forStep(task.workspaceId, step.agentId);
     if (agent.role === "builder") {
       if ((await builderStep(taskId, step, mode, signal)) === "question") return;
       builder = agent;
@@ -426,7 +426,7 @@ async function runFlow(taskId: string, from: string | number, firstMode: Builder
     if (back !== -1 && !verdict.approved && current.round < limit) {
       const count = verdict.issues.length + (checks ?? []).filter((c) => !c.ok).length;
       const target = flow.steps[back] as AgentStep;
-      emit(taskId, { type: "handoff", actor: agent.id, to: target.agentId, label: String(count) });
+      emit(taskId, { type: "handoff", actor: agent.id, to: target.agentId, label: String(count), fromStep: step.id, toStep: target.id });
       nextRound(taskId, false);
       mode = { kind: "fix" };
       i = back;

@@ -2,9 +2,9 @@
 
 import { useTranslations } from "next-intl";
 import { Check, GitMerge, Hand, MessageCircleQuestion, Sparkles, X } from "lucide-react";
-import type { Actor, AgentId, Flow, FlowStep, NodeState } from "@forgeboard/shared";
+import type { Actor, Flow, FlowStep, NodeState } from "@forgeboard/shared";
 import { sendBackIndex, stepActor, type RoleOf } from "@/lib/flow-view";
-import type { NodeStates } from "@/lib/run-model";
+import type { HandBack, NodeStates } from "@/lib/run-model";
 import { cn } from "@/lib/utils";
 import { Glyph, useActorName } from "./glyph";
 
@@ -37,8 +37,8 @@ export interface FlowGraphProps {
   notes?: Record<string, string>;
   /** Rounds for reviewers that don't set their own. */
   defaultRounds?: number;
-  /** The last hand-back, to label its loop with the number of issues. */
-  handBack?: { from: AgentId; count: number } | null;
+  /** The hand-back that started the current round, to label its loop with the number of issues. */
+  handBack?: HandBack | null;
   round?: number;
   selected?: Actor | null;
   onSelect?: (actor: Actor) => void;
@@ -62,7 +62,7 @@ export function FlowGraph({ flow, roleOf, states, notes = {}, defaultRounds = 3,
     .map((l, level) => {
       const agentId = l.step.type === "agent" ? l.step.agentId : "";
       const target = flow.steps[l.to]!;
-      const mine = handBack?.from === agentId && round > 1;
+      const mine = Boolean(handBack) && round > 1 && (handBack!.fromStep ? handBack!.fromStep === l.step.id : handBack!.from === agentId);
       const max = (l.step.type === "agent" && l.step.maxRounds) || defaultRounds;
       const targetName = target.type === "agent" ? name(target.agentId) : "";
       return {

@@ -94,7 +94,7 @@ export function RunView({ taskId }: { taskId: string }) {
   }, [status, refreshTasks]);
 
   const flow = task ? flowOf(task) : null;
-  const roleOf = useMemo(() => roleOfIn(task ? (crews[task.workspaceId] ?? crews.default) : crews.default), [crews, task]);
+  const roleOf = useMemo(() => roleOfIn(task ? crews[task.workspaceId] : undefined, crews.default), [crews, task]);
   const states = useMemo(() => (flow ? nodeStates(events, flow, roleOf) : {}), [events, flow, roleOf]);
   const segs = useMemo(() => (flow ? segments(events, flow) : []), [events, flow]);
   const handBack = lastHandBack(events);

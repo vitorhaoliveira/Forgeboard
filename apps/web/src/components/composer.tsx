@@ -126,7 +126,7 @@ export function Composer({ task, autoFocus, activeBuilder }: { task: Task; autoF
           </Button>
         </div>
       </div>
-      {task.status === "review" && <p className="text-[11.5px] text-muted">{t("reviewHint")}</p>}
+      {task.status === "review" && <p className="text-[11.5px] text-muted">{t("reviewHint", { name: agentName(notesTo, task.workspaceId) })}</p>}
       {error && <p className="text-xs text-danger">{error}</p>}
     </div>
   );
