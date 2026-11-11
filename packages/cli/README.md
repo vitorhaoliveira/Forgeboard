@@ -6,7 +6,7 @@ A local cockpit for AI coding agents. Tell your crew what to do; **Forge** build
 
 ## Run it
 
-You need **Node 22.13+**, **git**, and [Claude Code](https://docs.claude.com/en/docs/claude-code) logged in (subscription or API key; Forgeboard never sees it).
+You need **Node 22.13+**, **git**, and [Claude Code](https://docs.claude.com/en/docs/claude-code) and/or the [Codex CLI](https://github.com/openai/codex) logged in. Forgeboard never sees your keys.
 
 ```bash
 npx forgeboard

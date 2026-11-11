@@ -16,6 +16,7 @@ export const config = {
     .split(",")
     .map((o) => o.trim()),
   claudeBin: process.env.FORGEBOARD_CLAUDE_BIN ?? "claude",
+  codexBin: process.env.FORGEBOARD_CODEX_BIN ?? "codex",
   /** Max time for one check command (tests, lint…). */
   checkTimeoutMs: Number(process.env.FORGEBOARD_CHECK_TIMEOUT_MS ?? 5 * 60_000),
 };

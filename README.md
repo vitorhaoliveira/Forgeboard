@@ -6,7 +6,7 @@
 
 <sub>The demo above runs in the browser with a simulated crew (`pnpm demo`). See [Live demo](#live-demo).</sub>
 
-> Status: **v1.7.1**. Install with `npx forgeboard`, agents ask with forms and editable plans (A2UI), public demo mode, Workspaces per project, built-in "Build & Review" flow, live run view, merge decision, editable crew and house rules, English (US) and Brazilian Portuguese. Next up (v2): design your own flows with drag-and-drop blocks.
+> Status: **v1.8**. Codex as a provider, Install with `npx forgeboard`, agents ask with forms and editable plans (A2UI), public demo mode, Workspaces per project, built-in "Build & Review" flow, live run view, merge decision, editable crew and house rules, English (US) and Brazilian Portuguese. Next up (v2): design your own flows with drag-and-drop blocks.
 
 ## How it works
 
@@ -57,7 +57,7 @@ Publish it on Vercel:
 
 ## Getting started
 
-Requirements: **Node 22.13+**, **git**, and [Claude Code](https://docs.claude.com/en/docs/claude-code) logged in (subscription or API key — Forgeboard never sees it).
+Requirements: **Node 22.13+**, **git**, and at least one agent CLI logged in: [Claude Code](https://docs.claude.com/en/docs/claude-code) (Claude subscription or API key) and/or the [Codex CLI](https://github.com/openai/codex) (ChatGPT account or OpenAI API key). Forgeboard never sees your keys. Pick the provider of each agent in **Crew**, e.g. Claude builds and Codex reviews.
 
 ```bash
 npx forgeboard
@@ -95,6 +95,8 @@ The API runs on :4317 and the web app on http://localhost:3000, with hot reload.
 
 Agents never commit, push or touch your branch. Merging is always your click.
 
+With **Codex**, its own sandbox does the isolation: Hawk runs read-only, and Forge can only write inside the task's worktree (with network in Standard, without it in Restricted).
+
 **Standard** (the default) lets Forge run package managers and `node`, which in practice can run any code on your machine. For repositories you don't fully trust, switch the workspace to **Restricted** (workspace settings → Safety): Forge then only edits files and Forgeboard runs the checks. The API is local-only and, with `forgeboard`, needs an access key printed as a link in the terminal. See [SECURITY.md](SECURITY.md) for what is and isn't protected.
 
 ### Languages
@@ -109,6 +111,7 @@ The UI follows your browser language on first visit (English or Português) and 
 | `FORGEBOARD_DATA_DIR` | `~/.forgeboard` |
 | `FORGEBOARD_WEB_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` |
 | `FORGEBOARD_CLAUDE_BIN` | `claude` |
+| `FORGEBOARD_CODEX_BIN` | `codex` |
 | `FORGEBOARD_CHECK_TIMEOUT_MS` | `300000` |
 | `NEXT_PUBLIC_FORGEBOARD_API` | `http://127.0.0.1:4317` |
 
@@ -143,8 +146,9 @@ Key server files: `orchestrator.ts` (the Build & Review loop), `prompts.ts` (wha
 - [x] **v1.5 — Public demo**: simulated crew in the browser, replay of finished runs
 - [x] **v1.6 — Rich questions (A2UI)**: agents ask with small forms and editable plans
 - [x] **v1.7 — One-command install**: `npx forgeboard`, published to npm from a version tag
+- [x] **v1.8 — Codex**: OpenAI's Codex CLI as a provider for any agent, sandboxed
 - [ ] **v2 — Flow studio**: build your own flows (agents, checks, "ask me" gates, loops, parallel steps), custom agents
-- [ ] **v3 — More agents**: Codex CLI and API-key providers, parallel runs, cost dashboard
+- [ ] **v3 — More agents**: API-key providers, parallel runs, cost dashboard
 - [ ] **v4 — Routines**: scheduled and reusable tasks
 
 ## License

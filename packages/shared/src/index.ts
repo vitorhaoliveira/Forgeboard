@@ -7,7 +7,7 @@
  * Agents can pause the run to ask you a question.
  */
 
-export type ProviderId = "claude-code" | "mock";
+export type ProviderId = "claude-code" | "codex" | "mock";
 
 export type Locale = "en-US" | "pt-BR";
 export const LOCALES: Locale[] = ["en-US", "pt-BR"];

@@ -187,7 +187,7 @@
     "balanced": "Equilibrado",
     "strict": "Rigoroso",
     "runsOn": "Roda em",
-    "notInstalled": "não instalado",
+    "notInstalled": "indisponível, veja Configurações",
     "instructions": "Instruções extras",
     "rules": "Regras gerais da casa",
     "rulesSubtitle": "Todos os agentes seguem estas regras em todos os workspaces.",
@@ -205,7 +205,7 @@
     "addCheck": "Adicionar verificação",
     "providers": "Agentes disponíveis nesta máquina",
     "available": "disponível",
-    "missing": "não encontrado",
+    "missing": "indisponível",
     "workspaces": "Workspaces",
     "archived": "arquivado",
     "claudeSetupTitle": "Como conectar o Claude",
@@ -213,7 +213,13 @@
     "claudeSetupLogin": "Rode uma vez e faça o login quando ele pedir (ou digite /login):",
     "claudeSetupAccount": "Entre com a sua assinatura do Claude (Pro ou Max) ou com uma chave de API do Claude Console.",
     "claudeSetupRestart": "Feche o Claude Code e reinicie o Forgeboard. Aqui deve aparecer \"disponível\".",
-    "claudeSetupNote": "O Forgeboard usa o Claude Code que está instalado na sua máquina e nunca vê a sua senha ou chave. Sem ele, use o crew \"Mock (sem IA)\" para testar."
+    "claudeSetupNote": "O Forgeboard usa o Claude Code que está instalado na sua máquina e nunca vê a sua senha ou chave. Sem ele, use o crew \"Mock (sem IA)\" para testar.",
+    "codexSetupTitle": "Como conectar o Codex",
+    "codexSetupInstall": "Instale o Codex CLI no terminal:",
+    "codexSetupLogin": "Faça o login (abre o navegador):",
+    "codexSetupAccount": "Entre com a sua conta do ChatGPT, ou use uma chave de API da OpenAI com codex login --with-api-key.",
+    "codexSetupRestart": "Reinicie o Forgeboard e escolha o Codex para um agente em Equipe.",
+    "codexSetupNote": "O Forgeboard usa o Codex instalado na sua máquina e nunca vê a sua senha ou chave. O Codex roda no sandbox dele: o Hawk só lê, e o Forge só escreve na pasta da tarefa."
   },
   "runs": {
     "title": "Execuções",
@@ -327,7 +333,7 @@
     "cmdStandardHint": "Edita arquivos e roda npm, pnpm, yarn, bun, npx e node para instalar e testar. Na prática, isso permite executar qualquer código na sua máquina: use em repositórios em que você confia.",
     "cmdRestricted": "Restrito",
     "cmdRestrictedHint": "Só edita arquivos e usa git e ls para leitura. Não roda comandos: o Forgeboard roda as verificações depois e devolve as falhas.",
-    "safetyNote": "O Hawk nunca altera arquivos nem roda comandos, em nenhum dos modos."
+    "safetyNote": "O Hawk nunca altera arquivos nem roda comandos, em nenhum dos modos. Com o Codex, o sandbox dele também impede o Forge de escrever fora da pasta da tarefa; no Restrito, ele fica sem internet (os comandos ainda rodam, isolados)."
   },
   "demo": {
     "banner": "Demo ao vivo: uma equipe simulada roda no seu navegador. Nenhuma IA é chamada e nenhum repositório real é tocado.",

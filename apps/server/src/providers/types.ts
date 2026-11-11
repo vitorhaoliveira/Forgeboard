@@ -1,4 +1,4 @@
-import type { AgentId, Locale, ProviderId } from "@forgeboard/shared";
+import type { AgentId, ForgeCommands, Locale, ProviderId } from "@forgeboard/shared";
 
 /** What a provider reports while an agent works. The orchestrator adds who said it. */
 export type AgentActivity =
@@ -14,6 +14,8 @@ export interface StepInput {
   permissionMode: "plan" | "acceptEdits";
   /** Tools the agent may use without asking, e.g. "Bash(npm:*)". */
   allowedTools?: string[];
+  /** The workspace's setting for what Forge may run (providers with their own sandbox use it). */
+  commands?: ForgeCommands;
   /** Continue a previous session instead of starting fresh (after a question). */
   resumeSession?: string;
   locale: Locale;

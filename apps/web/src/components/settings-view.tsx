@@ -13,7 +13,7 @@ export function SettingsView() {
   const t = useTranslations("settings");
   const tw = useTranslations("ws");
   const tws = useTranslations("wsSettings");
-  const { workspaces, repos, providers, refreshWorkspaces, setNewWorkspaceOpen } = useAppState();
+  const { workspaces, repos, providers, crews, refreshWorkspaces, setNewWorkspaceOpen } = useAppState();
 
   async function unarchive(id: string) {
     await api.updateWorkspace(id, { archived: false });
@@ -67,31 +67,42 @@ export function SettingsView() {
               </div>
             ))}
           </Card>
-          <ClaudeSetup missing={providers.some((p) => p.id === "claude-code" && !p.available)} />
+          <ProviderSetup
+            prefix="claude"
+            install="npm i -g @anthropic-ai/claude-code"
+            login="claude"
+            open={providers.some((p) => p.id === "claude-code" && !p.available)}
+          />
+          <ProviderSetup
+            prefix="codex"
+            install="npm i -g @openai/codex"
+            login="codex login"
+            open={providers.some((p) => p.id === "codex" && !p.available) && Object.values(crews).flat().some((a) => a.provider === "codex")}
+          />
         </section>
       </div>
     </main>
   );
 }
 
-/** How to install and log in to Claude Code. Open by default when it's missing. */
-function ClaudeSetup({ missing }: { missing: boolean }) {
+/** How to install and log in to an agent CLI. Open by default when it's needed and missing. */
+function ProviderSetup({ prefix, install, login, open }: { prefix: "claude" | "codex"; install: string; login: string; open: boolean }) {
   const t = useTranslations("settings");
   const code = "rounded-md border border-border bg-bg px-2 py-1 font-mono text-[12px] text-text";
   return (
-    <details open={missing} className="rounded-[10px] border border-border bg-panel px-4 py-3 text-[13px]">
-      <summary className="cursor-pointer font-medium">{t("claudeSetupTitle")}</summary>
+    <details open={open} className="rounded-[10px] border border-border bg-panel px-4 py-3 text-[13px]">
+      <summary className="cursor-pointer font-medium">{t(`${prefix}SetupTitle`)}</summary>
       <ol className="mt-3 flex list-decimal flex-col gap-2.5 pl-5 text-muted">
         <li>
-          {t("claudeSetupInstall")} <code className={code}>npm i -g @anthropic-ai/claude-code</code>
+          {t(`${prefix}SetupInstall`)} <code className={code}>{install}</code>
         </li>
         <li>
-          {t("claudeSetupLogin")} <code className={code}>claude</code>
+          {t(`${prefix}SetupLogin`)} <code className={code}>{login}</code>
         </li>
-        <li>{t("claudeSetupAccount")}</li>
-        <li>{t("claudeSetupRestart")}</li>
+        <li>{t(`${prefix}SetupAccount`)}</li>
+        <li>{t(`${prefix}SetupRestart`)}</li>
       </ol>
-      <p className="mt-3 text-xs text-muted">{t("claudeSetupNote")}</p>
+      <p className="mt-3 text-xs text-muted">{t(`${prefix}SetupNote`)}</p>
     </details>
   );
 }
