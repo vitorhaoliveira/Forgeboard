@@ -67,7 +67,11 @@ const FORM_FIELDS = `  Field types (at most 6 fields):
   {"id": "name", "type": "text", "label": "...", "value": "default", "mono": true}
   {"id": "plan", "type": "steps", "label": "...", "value": [{"text": "step", "estimate": "~2 min"}]}`;
 
-function forgeEnding(style: ForgeStyle): string {
+/**
+ * The end of every Forge prompt. `followUp` is true for every step after the first one
+ * (answers, fixes, notes, messages), so a new list of decisions replaces the previous one.
+ */
+function forgeEnding(style: ForgeStyle, followUp = true): string {
   const lines = ["", "How to finish:", "- Work only inside the current directory. Do not commit, create branches or push: the user reviews and merges."];
   if (style.askMode === "decide") {
     lines.push(
@@ -89,6 +93,11 @@ function forgeEnding(style: ForgeStyle): string {
   lines.push("- Otherwise end with a short summary (2-4 sentences) of what you changed and why.");
   if (style.askMode === "decide") {
     lines.push(`- If you made decisions the user didn't specify, add one last line listing them, each with a short reason:\n  ${ASSUMPTIONS_MARKER} ["Used 25 rows per page, like OrdersTable", "..."]`);
+    if (followUp) {
+      lines.push(
+        "  This list replaces your previous one. If you listed decisions earlier in this task, always send the updated list, even when nothing changed: keep the earlier decisions that still hold, leave out any the user's messages or your latest changes made obsolete, and send [] if none still hold.",
+      );
+    }
   }
   return lines.join("\n");
 }
@@ -120,12 +129,16 @@ const RESTRICTED_NOTE = `
 Commands: in this workspace you can only edit files and use read-only git and ls. Don't try to install packages or run tests; Forgeboard runs the repository's checks after you finish and sends you any failures.
 `;
 
+const FILE_TOOLS_NOTE =
+  "Create and change files with your file-editing tools, not with shell redirection or in-place edits (cat >, echo >, tee, sed -i): those commands can be refused, which wastes a step.";
+
 export function forgeStartPrompt(agent: Agent, task: Task, rules: HouseRule[], commands: ForgeCommands = "standard", style: ForgeStyle = DEFAULT_STYLE): string {
   return `${header(agent, "builder", task, rules)}
+${FILE_TOOLS_NOTE}
 ${commands === "restricted" ? RESTRICTED_NOTE : ""}
 Your task:
 ${task.prompt}
-${forgeEnding(style)}`;
+${forgeEnding(style, false)}`;
 }
 
 export function forgeAnswerPrompt(
@@ -171,6 +184,13 @@ Address them, without unrelated changes.
 ${forgeEnding(style)}`;
 }
 
+/** The verdict JSON is shown to the user as is, so it needs the language too (it came back in English). */
+function verdictLanguage(locale: Locale): string {
+  return locale === "pt-BR"
+    ? 'Write "summary", every issue "message" and "suggestedRule" in Brazilian Portuguese; keep the keys and the "risk"/"severity" values in English.'
+    : 'Write "summary", every issue "message" and "suggestedRule" in US English.';
+}
+
 export function hawkPrompt(
   agent: Agent,
   task: Task,
@@ -207,7 +227,7 @@ ${diff}
 
 You may read files for context. Approve only if every check passed and there is no high-severity issue. Also check the house rules.
 
-End your answer with one fenced json block and nothing after it:
+End your answer with one fenced json block and nothing after it. ${verdictLanguage(task.locale)}
 \`\`\`json
 {
   "approved": true,
@@ -253,15 +273,16 @@ export function parseForm(text: string): AgentForm | null {
 }
 
 /** Pulls the list of decisions Forge made on its own ("decide" mode). */
-export function parseAssumptions(text: string): string[] {
+/** Forge's list of decisions, or null when it sent none. An empty list means none still hold. */
+export function parseAssumptions(text: string): string[] | null {
   const idx = text.lastIndexOf(ASSUMPTIONS_MARKER);
-  if (idx === -1) return [];
+  if (idx === -1) return null;
   const raw = text.slice(idx + ASSUMPTIONS_MARKER.length).trim();
   try {
     const list = JSON.parse(raw.slice(0, raw.lastIndexOf("]") + 1)) as unknown;
-    return Array.isArray(list) ? list.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim().slice(0, 240)).slice(0, 8) : [];
+    return Array.isArray(list) ? list.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim().slice(0, 240)).slice(0, 8) : null;
   } catch {
-    return [];
+    return null;
   }
 }
 

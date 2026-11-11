@@ -223,10 +223,13 @@ async function forgeStep(taskId: string, mode: ForgeMode, signal: AbortSignal): 
 
   const assumptions = parseAssumptions(output.text);
   const summary = stripQuestion(output.text);
-  if (assumptions.length) {
+  // Each list is complete (see forgeEnding), so it replaces the previous one instead of piling up.
+  if (assumptions?.length) {
     emit(taskId, { type: "assumptions", actor: "forge", items: assumptions });
-    const current = tasks.get(taskId)!;
-    tasks.update(taskId, { assumptions: [...(current.assumptions ?? []), ...assumptions], assumptionsAck: false });
+    tasks.update(taskId, { assumptions, assumptionsAck: false });
+  } else if (assumptions && tasks.get(taskId)!.assumptions?.length) {
+    // An empty list: none of the earlier decisions still hold, so there's nothing left to check.
+    tasks.update(taskId, { assumptions: [] });
   }
   emit(taskId, { type: "step_done", actor: "forge", summary, costUsd: output.costUsd, durationMs: output.durationMs });
   tasks.update(taskId, { summary });
