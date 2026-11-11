@@ -129,8 +129,8 @@ packages/
 ### Releasing
 
 1. Bump `version` in `packages/cli/package.json` and add the section to `CHANGELOG.md`.
-2. Merge to `main`, then tag: `git tag v1.7.1 && git push origin v1.7.1`.
-3. The **Publish to npm** workflow checks the tag matches the version, builds the package and publishes it with npm Trusted Publishing (no token; set up once on npmjs.com under the package's Settings → Trusted Publisher).
+2. Merge to `main`, then tag: `git tag v1.9.1 && git push origin v1.9.1`.
+3. The **Publish to npm** workflow checks the tag matches the version, builds the package and publishes it with npm Trusted Publishing (no token; set up once on npmjs.com under the package's Settings → Trusted Publisher). It then creates the GitHub release, with the version's `CHANGELOG.md` section as notes; the title comes from the section's first line ("Talk to the crew: …" → "v1.9.0 — Talk to the crew").
 
 The very first version was published by hand (`pnpm package`, then `npm publish --access public` in `packages/cli`), since npm only lets you add a trusted publisher to a package that already exists.
 
