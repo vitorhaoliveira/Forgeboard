@@ -46,7 +46,7 @@ export const mockProvider: Provider = {
     let steps: Step[];
     let text: string;
 
-    if (input.role === "hawk") {
+    if (input.role === "reviewer") {
       steps = [
         [500, { type: "text", text: t(locale, "Reading the diff and the check results.", "Lendo o diff e os resultados das verificações.") }],
         [700, { type: "tool_use", toolUseId: `h${round}`, name: "Read", input: { file_path: file } }],

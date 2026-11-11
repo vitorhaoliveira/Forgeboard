@@ -306,8 +306,8 @@ function seed(locale: Locale): Store {
   const blog = repo(personal, "blog", BLOG_CHECKS);
 
   const defaults: Agent[] = [
-    { id: "forge", name: "Forge", provider: "claude-code", personality: "balanced", instructions: tr(L, "Keep changes small and focused.", "Mantenha as mudanças pequenas e focadas.") },
-    { id: "hawk", name: "Hawk", provider: "claude-code", personality: "strict", instructions: tr(L, "Block on failing checks and real bugs.", "Bloqueie verificações falhando e bugs de verdade.") },
+    { id: "forge", name: "Forge", role: "builder", provider: "claude-code", personality: "balanced", instructions: tr(L, "Keep changes small and focused.", "Mantenha as mudanças pequenas e focadas.") },
+    { id: "hawk", name: "Hawk", role: "reviewer", provider: "claude-code", personality: "strict", instructions: tr(L, "Block on failing checks and real bugs.", "Bloqueie verificações falhando e bugs de verdade.") },
   ];
   const acmeCrew: Agent[] = [
     { ...defaults[0]!, customized: false },

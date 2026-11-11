@@ -2,6 +2,16 @@
 
 All notable changes to Forgeboard are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+Groundwork for v2.0 (Flow studio). No visible change.
+
+### Changed
+
+- **Flows are data.** "Build & Review" is now a built-in flow (`BUILD_AND_REVIEW` in `@forgeboard/shared`) that the server runs step by step (`runFlow`), instead of a fixed Forge → checks → Hawk loop. Each task keeps a copy of its flow; tasks from before have none and run as Build & Review.
+- **Agents have a role.** `builder` (edits files) or `reviewer` (read only). Providers decide permissions by role instead of by agent id: Claude Code tools and the Codex sandbox.
+- **Versioned migrations.** The database records its schema version (`PRAGMA user_version`), and each migration runs once, in order. New `flows` table, empty for now.
+
 ## [1.9.2] — 2026-11-11
 
 Polish: fewer stale decisions, rules and wasted steps.

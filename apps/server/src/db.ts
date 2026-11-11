@@ -2,9 +2,11 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { nanoid } from "nanoid";
+import { BUILD_AND_REVIEW } from "@forgeboard/shared";
 import type {
   Agent,
   AgentId,
+  Flow,
   HouseRule,
   Repo,
   RuleScope,
@@ -81,22 +83,48 @@ db.exec(`
   );
 `);
 
-// ---------- Migrations from v1.0 ----------
+// ---------- Migrations ----------
+// Each runs once, in order; PRAGMA user_version records how many have run.
+// Databases from before v2.0 are at 0: migration 1 is the old ad hoc one and is safe to re-run.
 
-const repoColumns = db.prepare("PRAGMA table_info(repos)").all().map((c) => String(c.name));
-if (!repoColumns.includes("workspace_id")) {
-  db.exec("ALTER TABLE repos ADD COLUMN workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE");
-}
+const MIGRATIONS: (() => void)[] = [
+  // 1 (v1.1): repos belong to workspaces; v1.0 kept rules per repo in a `rules` table.
+  () => {
+    const repoColumns = db.prepare("PRAGMA table_info(repos)").all().map((c) => String(c.name));
+    if (!repoColumns.includes("workspace_id")) {
+      db.exec("ALTER TABLE repos ADD COLUMN workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE");
+    }
+    const legacyRules = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'rules'").get();
+    if (legacyRules) {
+      for (const r of db.prepare("SELECT data, repo_id, created_at FROM rules").all()) {
+        const old = JSON.parse(String(r.data)) as Omit<HouseRule, "scope" | "workspaceId">;
+        const rule: HouseRule = { ...old, scope: "repo", workspaceId: null, repoId: String(r.repo_id) };
+        db.prepare("INSERT OR IGNORE INTO house_rules (id, data, created_at) VALUES (?, ?, ?)").run(rule.id, JSON.stringify(rule), String(r.created_at));
+      }
+      db.exec("DROP TABLE rules");
+    }
+  },
+  // 2 (v2.0): flows you make. Built-in flows live in code.
+  () => {
+    db.exec(`CREATE TABLE IF NOT EXISTS flows (
+      id TEXT PRIMARY KEY,
+      data TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`);
+  },
+];
 
-// v1.0 kept rules per repo in a `rules` table.
-const legacyRules = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'rules'").get();
-if (legacyRules) {
-  for (const r of db.prepare("SELECT data, repo_id, created_at FROM rules").all()) {
-    const old = JSON.parse(String(r.data)) as Omit<HouseRule, "scope" | "workspaceId">;
-    const rule: HouseRule = { ...old, scope: "repo", workspaceId: null, repoId: String(r.repo_id) };
-    db.prepare("INSERT OR IGNORE INTO house_rules (id, data, created_at) VALUES (?, ?, ?)").run(rule.id, JSON.stringify(rule), String(r.created_at));
+const schemaVersion = Number(db.prepare("PRAGMA user_version").get()?.user_version ?? 0);
+for (let v = schemaVersion; v < MIGRATIONS.length; v++) {
+  db.exec("BEGIN");
+  try {
+    MIGRATIONS[v]!();
+    db.exec(`PRAGMA user_version = ${v + 1}`);
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
   }
-  db.exec("DROP TABLE rules");
 }
 
 type Row = Record<string, unknown>;
@@ -239,8 +267,12 @@ export const tasks = {
 export interface TaskState {
   worktreePath?: string;
   baseSha?: string;
-  /** Claude Code session of Forge's last step, used to resume after a question. */
+  /** Before v2.0: the session of Forge's last step. Read as the session of the "forge" step. */
   forgeSession?: string;
+  /** Session of each builder step's last run, by step id, so it resumes after a question or across rounds. */
+  sessions?: Record<string, string>;
+  /** The step a paused task continues from (after a question). */
+  resumeStep?: string;
 }
 
 export const taskState = {
@@ -290,6 +322,7 @@ const DEFAULT_AGENTS: Agent[] = [
   {
     id: "forge",
     name: "Forge",
+    role: "builder",
     provider: "claude-code",
     personality: "balanced",
     instructions: "Keep changes small and focused. Follow the conventions already used in the repository.",
@@ -297,6 +330,7 @@ const DEFAULT_AGENTS: Agent[] = [
   {
     id: "hawk",
     name: "Hawk",
+    role: "reviewer",
     provider: "claude-code",
     personality: "strict",
     instructions: "Block on failing checks and on real bugs. Do not nitpick style that a linter would catch.",
@@ -319,7 +353,11 @@ export const agents = {
           return [a.id, a] as const;
         }),
     );
-    return DEFAULT_AGENTS.map((d) => stored.get(d.id) ?? d);
+    // A built-in agent's role is fixed (saved settings from before v2.0 have none).
+    return DEFAULT_AGENTS.map((d) => {
+      const a = stored.get(d.id);
+      return a ? { ...a, role: d.role } : d;
+    });
   },
   saveDefault(agent: Agent): void {
     const { customized: _c, ...data } = agent;
@@ -341,7 +379,7 @@ export const agents = {
     );
     return defaults.map((d) => {
       const o = overrides.get(d.id);
-      return o ? { ...o, customized: !sameAgent(o, d) } : { ...d, customized: false };
+      return o ? { ...o, role: d.role, customized: !sameAgent(o, d) } : { ...d, customized: false };
     });
   },
   get(workspaceId: string | undefined, id: AgentId): Agent {
@@ -355,6 +393,26 @@ export const agents = {
   },
   resetForWorkspace(workspaceId: string, id: AgentId): void {
     db.prepare("DELETE FROM workspace_agents WHERE workspace_id = ? AND agent_id = ?").run(workspaceId, id);
+  },
+};
+
+// ---------- Flows ----------
+
+const BUILT_IN_FLOWS: Flow[] = [BUILD_AND_REVIEW];
+
+export const flows = {
+  list(): Flow[] {
+    const mine = db
+      .prepare("SELECT data FROM flows ORDER BY created_at")
+      .all()
+      .map((r) => JSON.parse(String(r.data)) as Flow);
+    return [...BUILT_IN_FLOWS, ...mine];
+  },
+  get(id: string): Flow | undefined {
+    const builtIn = BUILT_IN_FLOWS.find((f) => f.id === id);
+    if (builtIn) return builtIn;
+    const r = db.prepare("SELECT data FROM flows WHERE id = ?").get(id);
+    return r ? (JSON.parse(String(r.data)) as Flow) : undefined;
   },
 };
 
