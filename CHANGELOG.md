@@ -8,6 +8,12 @@ All notable changes to Forgeboard are listed here. The format follows [Keep a Ch
 
 - "Remember as a house rule" on desk question cards now starts unticked. Most answers only matter for that task, and saved rules apply to every future task in the repository; tick it when the answer is a real convention.
 
+### Fixed
+
+- **"To check" shows only the decisions that still hold.** Each list Forge sends now replaces the previous one instead of adding to it, and Forge resends it after every step. Before, a decision your message had undone (e.g. "didn't add sorting", after you asked for sorting) stayed on the card.
+- **Hawk's verdict follows the UI language.** The summary and issues sometimes came back in English with the UI in Portuguese.
+- **Forge edits files with its file tools.** It used to try `cat > file` first, get refused and then retry with the right tool, wasting a step on every task.
+
 ## [1.9.1] — 2026-11-11
 
 Review fixes: found by testing v1.9 with Claude Code.
