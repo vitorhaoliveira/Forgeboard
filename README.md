@@ -6,7 +6,7 @@
 
 <sub>The demo above runs in the browser with a simulated crew (`pnpm demo`). See [Live demo](#live-demo).</sub>
 
-> Status: **v2.0**. Your own flows (builders, reviewers, checks, "Ask me" pauses) and your own agents, a flow per task, a conversation with the crew (message it mid-run, "decide and tell me" mode), Claude Code and Codex as providers, install with `npx forgeboard`, agents ask with forms and editable plans (A2UI), public demo mode, workspaces per project, live run view, merge decision, house rules, English (US) and Brazilian Portuguese. Next up (v2.1): a drag-and-drop canvas for flows.
+> Status: **v2.1**. Your own flows (builders, reviewers, checks, "Ask me" pauses) and your own agents, a flow per task, a conversation with the crew (message it mid-run, "decide and tell me" mode), Claude Code and Codex as providers, install with `npx forgeboard`, agents ask with forms and editable plans (A2UI), public demo mode, workspaces per project, live run view, merge decision, house rules, English (US) and Brazilian Portuguese. Next up (v2.2): a drag-and-drop canvas for flows.
 
 ## How it works
 
@@ -74,7 +74,7 @@ Requirements: **Node 22.13+**, **git**, and at least one agent CLI logged in: [C
 npx forgeboard
 ```
 
-That's it: it opens http://localhost:4317. Create a workspace with one or more repositories (any git repo with at least one commit), and type a task in the top bar. To keep it installed: `npm i -g forgeboard`, then run `forgeboard`.
+That's it: it opens http://localhost:4317. Create a workspace, pick one or more repositories with "Choose folder…" (any git repo with at least one commit), and type a task in the top bar. To keep it installed: `npm i -g forgeboard`, then run `forgeboard`.
 
 | Option | Default | |
 |---|---|---|
@@ -142,7 +142,7 @@ packages/
 ### Releasing
 
 1. Bump `version` in `packages/cli/package.json` and add the section to `CHANGELOG.md`.
-2. Merge to `main`, then tag: `git tag v2.0.1 && git push origin v2.0.1`.
+2. Merge to `main`, then tag: `git tag v2.1.1 && git push origin v2.1.1`.
 3. The **Publish to npm** workflow checks the tag matches the version, builds the package and publishes it with npm Trusted Publishing (no token; set up once on npmjs.com under the package's Settings → Trusted Publisher). It then creates the GitHub release, with the version's `CHANGELOG.md` section as notes; the title comes from the section's first line ("Talk to the crew: …" → "v1.9.0 — Talk to the crew").
 
 The very first version was published by hand (`pnpm package`, then `npm publish --access public` in `packages/cli`), since npm only lets you add a trusted publisher to a package that already exists.
@@ -162,8 +162,9 @@ Key server files: `orchestrator.ts` (`runFlow`, which runs a task's flow step by
 - [x] **v1.8 — Codex**: OpenAI's Codex CLI as a provider for any agent, sandboxed
 - [x] **v1.9 — Conversation**: talk to the crew mid-run, reply by typing, "decide and tell me" mode
 - [x] **v2.0 — Flow studio**: your own flows (builders, reviewers with loops, checks, "Ask me" pauses), your own agents with a role, a flow per task
-- [ ] **v2.1 — Flow canvas**: drag-and-drop editor for flows
-- [ ] **v2.2 — Parallel steps**: run agents side by side in a flow
+- [x] **v2.1 — Folder picker**: choose a repository from your folders instead of typing its path
+- [ ] **v2.2 — Flow canvas**: drag-and-drop editor for flows
+- [ ] **v2.3 — Parallel steps**: run agents side by side in a flow
 - [ ] **v3 — More agents**: API-key providers, parallel runs, cost dashboard
 - [ ] **v4 — Routines**: scheduled and reusable tasks
 
