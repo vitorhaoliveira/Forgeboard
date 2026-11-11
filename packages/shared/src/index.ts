@@ -1,9 +1,10 @@
 /**
  * Types shared by the local server and the web UI.
  *
- * v1 runs one built-in flow, "Build & Review":
+ * A task runs a flow: a list of steps (agents, checks) that ends with you deciding (merge / discard).
+ * The built-in flow is "Build & Review":
  *   your task → Forge (builds) → Checks (tests/lint/types) → Hawk (reviews)
- *   → back to Forge until Hawk approves or rounds run out → you decide (merge / discard).
+ *   → back to Forge until Hawk approves or rounds run out → you decide.
  * Agents can pause the run to ask you a question.
  */
 
@@ -17,6 +18,9 @@ export type AgentId = "forge" | "hawk";
 export type Actor = AgentId | "checks" | "you" | "system";
 
 export type Personality = "mentor" | "balanced" | "strict";
+
+/** What an agent may do: a builder edits files in the worktree, a reviewer only reads. */
+export type AgentRole = "builder" | "reviewer";
 
 export type TaskStatus =
   | "queued"
@@ -37,6 +41,7 @@ export type NodeState = "idle" | "active" | "done" | "failed" | "warn";
 export interface Agent {
   id: AgentId;
   name: string;
+  role: AgentRole;
   provider: ProviderId;
   personality: Personality;
   /** Extra instructions added to the agent's prompt. */
@@ -44,6 +49,47 @@ export interface Agent {
   /** In a workspace with its own crew: true when this agent differs from the default. */
   customized?: boolean;
 }
+
+/** One step of a flow. Step ids are unique inside a flow and name the graph node. */
+export type FlowStep =
+  | {
+      id: string;
+      type: "agent";
+      agentId: AgentId;
+      /** Reviewers only: the builder step that gets the work back when changes are requested. */
+      sendBackTo?: string;
+      /** Reviewers only: rounds before the work goes to you anyway. Missing means the task's maxRounds. */
+      maxRounds?: number;
+    }
+  | { id: string; type: "checks" };
+
+/** A list of steps a task runs, in order. It always ends with you deciding. */
+export interface Flow {
+  id: string;
+  name: string;
+  description: string;
+  steps: FlowStep[];
+  /** Built-in flows can't be edited or deleted. */
+  builtIn?: boolean;
+}
+
+export const BUILD_AND_REVIEW_ID = "build-and-review";
+
+/**
+ * The v1 flow as data. Its step ids match the old graph nodes, so tasks
+ * created before flows existed read the same way.
+ */
+export const BUILD_AND_REVIEW: Flow = {
+  id: BUILD_AND_REVIEW_ID,
+  name: "Build & Review",
+  description: "Forge builds, the checks run, Hawk reviews and sends it back until it's right.",
+  builtIn: true,
+  steps: [
+    { id: "forge", type: "agent", agentId: "forge" },
+    { id: "checks", type: "checks" },
+    { id: "hawk", type: "agent", agentId: "hawk", sendBackTo: "forge" },
+  ],
+};
 
 export interface CheckCommand {
   name: string;
@@ -201,6 +247,8 @@ export interface Task {
   status: TaskStatus;
   round: number;
   maxRounds: number;
+  /** The flow this task runs, copied when it starts so later edits don't change it. Missing means Build & Review. */
+  flow?: Flow;
   branch: string | null;
   baseBranch: string | null;
   question: AgentQuestion | null;

@@ -1,15 +1,19 @@
 import { join } from "node:path";
 import { nanoid } from "nanoid";
 import { compileForm, sanitizeAnswer, validateUi } from "@forgeboard/shared/a2ui";
+import { BUILD_AND_REVIEW } from "@forgeboard/shared";
 import type {
   Actor,
+  Agent,
   AgentForm,
   AgentQuestion,
   CheckResult,
   FormAnswer,
   Locale,
   MessageDelivery,
+  Flow,
   FlowNode,
+  FlowStep,
   ForgeCommands,
   NodeState,
   RunEventPayload,
@@ -41,21 +45,21 @@ import { getProvider } from "./providers/index.js";
 import { AbortedError, type AgentActivity } from "./providers/types.js";
 
 /**
- * Commands Forge may run without asking: package managers (to run tests and builds)
+ * Commands builders may run without asking: package managers (to run tests and builds)
  * and read-only git/file commands. Anything else is refused in headless mode.
  */
 const READ_ONLY_COMMANDS = ["ls", "git status", "git diff", "git log"];
 const PACKAGE_COMMANDS = ["npm", "pnpm", "yarn", "bun", "npx", "node"];
 const asTools = (cmds: string[]) => cmds.flatMap((cmd) => [`Bash(${cmd})`, `Bash(${cmd} *)`]);
 
-/** Shell commands Forge may run, by the workspace's setting. File edits are always allowed. */
-const FORGE_ALLOWED_TOOLS: Record<ForgeCommands, string[]> = {
+/** Shell commands builders may run, by the workspace's setting. File edits are always allowed. */
+const BUILDER_ALLOWED_TOOLS: Record<ForgeCommands, string[]> = {
   standard: asTools([...PACKAGE_COMMANDS, ...READ_ONLY_COMMANDS]),
   restricted: asTools(READ_ONLY_COMMANDS),
 };
 
-/** Hawk reads files only: no shell and no edits, whatever the model decides. */
-const HAWK_DISALLOWED_TOOLS = ["Bash", "Edit", "Write", "NotebookEdit"];
+/** Reviewers read files only: no shell and no edits, whatever the model decides. */
+const REVIEWER_DISALLOWED_TOOLS = ["Bash", "Edit", "Write", "NotebookEdit"];
 
 /** Abort handles for tasks the server is working on right now. */
 const running = new Map<string, AbortController>();
@@ -68,8 +72,10 @@ function emit(taskId: string, payload: RunEventPayload): void {
   bus.publish(event);
 }
 
-function node(taskId: string, n: FlowNode, state: NodeState, note?: string): void {
-  emit(taskId, { type: "node", actor: "system", node: n, state, note });
+/** Lights a graph node: a step id, or "task" / "you" / "merge". */
+function node(taskId: string, n: string, state: NodeState, note?: string): void {
+  // Step ids of the built-in flow are the FlowNode names; other flows widen this in v2.0's flow editor.
+  emit(taskId, { type: "node", actor: "system", node: n as FlowNode, state, note });
 }
 
 function setStatus(taskId: string, status: TaskStatus, patch: Partial<Task> = {}): Task {
@@ -110,18 +116,20 @@ function activityEmitter(taskId: string, actor: Actor) {
 
 // ---------- Steps ----------
 
-type ForgeMode =
+type BuilderMode =
   | { kind: "start" }
   | { kind: "answer"; answer: string; form?: AgentForm; data?: FormAnswer; note?: string; replan?: boolean }
   | { kind: "fix" }
   | { kind: "notes"; notes: string }
-  /** Only your messages: after an interruption, or when they arrive after Hawk approved. */
+  /** Only your messages: after an interruption, or when they arrive after a reviewer approved. */
   | { kind: "messages" };
 
-/** Messages you sent while the crew worked, waiting for Forge's next step. */
+/** Messages you sent while the crew worked, waiting for the next builder step. */
 const inbox = new Map<string, string[]>();
-/** The Forge step running now, so a message can interrupt it. */
-const forgeSteps = new Map<string, AbortController>();
+/** The builder step running now, so a message can interrupt it. */
+const builderSteps = new Map<string, AbortController>();
+
+type AgentStep = Extract<FlowStep, { type: "agent" }>;
 
 function takeInbox(taskId: string): string[] {
   const list = inbox.get(taskId) ?? [];
@@ -134,8 +142,45 @@ function styleFor(workspaceId: string): ForgeStyle {
   return { askMode: ws?.askMode ?? "ask", planFirst: ws?.planFirst ?? true };
 }
 
+/** The flow a task runs. Tasks from before v2.0 have none: they ran Build & Review. */
+function flowOf(task: Task): Flow {
+  return task.flow ?? BUILD_AND_REVIEW;
+}
+
+function isBuilder(task: Task, step: FlowStep): step is AgentStep {
+  return step.type === "agent" && agents.get(task.workspaceId, step.agentId).role === "builder";
+}
+
+/** The step a reviewer sends work back to: its `sendBackTo`, or the closest builder before it. */
+function sendBackIndex(task: Task, flow: Flow, reviewerIndex: number): number {
+  const step = flow.steps[reviewerIndex] as AgentStep;
+  if (step.sendBackTo) return flow.steps.findIndex((s) => s.id === step.sendBackTo);
+  for (let i = reviewerIndex - 1; i >= 0; i--) if (isBuilder(task, flow.steps[i]!)) return i;
+  return -1;
+}
+
+/** The last builder step of a flow: where your notes go after review. */
+function lastBuilderId(task: Task, flow: Flow): string {
+  const step = [...flow.steps].reverse().find((s) => isBuilder(task, s));
+  if (!step) throw new FlowError("This flow has no agent that builds.");
+  return step.id;
+}
+
+function sessionOf(taskId: string, stepId: string): string | undefined {
+  const state = taskState.get(taskId);
+  return state.sessions?.[stepId] ?? (stepId === "forge" ? state.forgeSession : undefined);
+}
+
+function saveSession(taskId: string, stepId: string, sessionId: string | null | undefined): void {
+  const state = taskState.get(taskId);
+  const sessions = { ...state.sessions };
+  if (sessionId) sessions[stepId] = sessionId;
+  else delete sessions[stepId];
+  taskState.set(taskId, { sessions });
+}
+
 /**
- * Turns a form in Forge's message into a question with A2UI messages. Returns null
+ * Turns a form in a builder's message into a question with A2UI messages. Returns null
  * when there is no form, or when it doesn't pass the catalog (then the text question, if any, is used).
  */
 function formQuestion(taskId: string, text: string, locale: Locale): AgentQuestion | null {
@@ -152,13 +197,12 @@ function formQuestion(taskId: string, text: string, locale: Locale): AgentQuesti
   }
 }
 
-/** Runs Forge once. Returns "question" when Forge paused to ask the user something. */
-async function forgeStep(taskId: string, mode: ForgeMode, signal: AbortSignal): Promise<"question" | "done"> {
+/** Runs a builder step once. Returns "question" when the agent paused to ask the user something. */
+async function builderStep(taskId: string, step: AgentStep, mode: BuilderMode, signal: AbortSignal): Promise<"question" | "done"> {
   const task = tasks.get(taskId)!;
   const { worktree } = requireWorktree(taskId);
-  const agent = agents.get(task.workspaceId, "forge");
+  const agent = agents.get(task.workspaceId, step.agentId);
   const repoRules = rules.forRepo(repos.get(task.repoId)!);
-  const state = taskState.get(taskId);
   const commands: ForgeCommands = workspaces.get(task.workspaceId)?.forgeCommands ?? "standard";
   const style = styleFor(task.workspaceId);
   const messages = takeInbox(taskId);
@@ -175,48 +219,49 @@ async function forgeStep(taskId: string, mode: ForgeMode, signal: AbortSignal): 
             : forgeMessagesPrompt(messages, style);
   const prompt = mode.kind === "messages" ? base : mode.kind === "start" ? `${base}\n\n${messagesNote(messages)}`.trim() : `${messagesNote(messages)}${base}`;
 
-  node(taskId, "forge", "active");
+  node(taskId, step.id, "active");
   // Its own stop handle, so a message can interrupt this step without stopping the task.
-  const step = new AbortController();
-  const stopStep = () => step.abort();
+  const stepAbort = new AbortController();
+  const stopStep = () => stepAbort.abort();
   signal.addEventListener("abort", stopStep, { once: true });
-  forgeSteps.set(taskId, step);
+  builderSteps.set(taskId, stepAbort);
   let output;
   try {
     output = await getProvider(agent.provider).run({
-      role: "forge",
+      role: "builder",
       prompt,
       cwd: worktree,
       permissionMode: "acceptEdits",
-      allowedTools: FORGE_ALLOWED_TOOLS[commands],
+      allowedTools: BUILDER_ALLOWED_TOOLS[commands],
       commands,
-      // Keep the same conversation across rounds so Forge remembers its work.
-      resumeSession: mode.kind === "start" ? undefined : state.forgeSession,
-      onSession: (id) => taskState.set(taskId, { forgeSession: id }),
+      // Keep the same conversation across rounds so the agent remembers its work.
+      resumeSession: mode.kind === "start" ? undefined : sessionOf(taskId, step.id),
+      onSession: (id) => saveSession(taskId, step.id, id),
       locale: task.locale,
       round: task.round,
-      signal: step.signal,
-      emit: activityEmitter(taskId, "forge"),
+      signal: stepAbort.signal,
+      emit: activityEmitter(taskId, agent.id),
     });
   } catch (err) {
     // Interrupted by your message: resume the same session with it.
-    if (!signal.aborted && step.signal.aborted && inbox.get(taskId)?.length) {
-      return forgeStep(taskId, { kind: "messages" }, signal);
+    if (!signal.aborted && stepAbort.signal.aborted && inbox.get(taskId)?.length) {
+      return builderStep(taskId, step, { kind: "messages" }, signal);
     }
     throw err;
   } finally {
     signal.removeEventListener("abort", stopStep);
-    if (forgeSteps.get(taskId) === step) forgeSteps.delete(taskId);
+    if (builderSteps.get(taskId) === stepAbort) builderSteps.delete(taskId);
   }
-  taskState.set(taskId, { forgeSession: output.sessionId ?? undefined });
+  saveSession(taskId, step.id, output.sessionId);
   addCost(taskId, output.costUsd);
 
   const question = formQuestion(taskId, output.text, task.locale) ?? parseQuestion(output.text);
   if (question) {
     // The provider already streamed the message itself; the UI hides the marker line.
-    emit(taskId, { type: "question", actor: "forge", question });
-    node(taskId, "forge", "warn");
+    emit(taskId, { type: "question", actor: agent.id, question });
+    node(taskId, step.id, "warn");
     node(taskId, "you", "active");
+    taskState.set(taskId, { resumeStep: step.id });
     setStatus(taskId, "waiting", { question });
     return "question";
   }
@@ -225,33 +270,33 @@ async function forgeStep(taskId: string, mode: ForgeMode, signal: AbortSignal): 
   const summary = stripQuestion(output.text);
   // Each list is complete (see forgeEnding), so it replaces the previous one instead of piling up.
   if (assumptions?.length) {
-    emit(taskId, { type: "assumptions", actor: "forge", items: assumptions });
+    emit(taskId, { type: "assumptions", actor: agent.id, items: assumptions });
     tasks.update(taskId, { assumptions, assumptionsAck: false });
   } else if (assumptions && tasks.get(taskId)!.assumptions?.length) {
     // An empty list: none of the earlier decisions still hold, so there's nothing left to check.
     tasks.update(taskId, { assumptions: [] });
   }
-  emit(taskId, { type: "step_done", actor: "forge", summary, costUsd: output.costUsd, durationMs: output.durationMs });
+  emit(taskId, { type: "step_done", actor: agent.id, summary, costUsd: output.costUsd, durationMs: output.durationMs });
   tasks.update(taskId, { summary });
   // Messages sent during this step ("at the next pause") go in now, before checks and review,
-  // so Hawk reviews work that already includes them.
-  if (inbox.get(taskId)?.length) return forgeStep(taskId, { kind: "messages" }, signal);
-  node(taskId, "forge", "done");
+  // so the reviewer sees work that already includes them.
+  if (inbox.get(taskId)?.length) return builderStep(taskId, step, { kind: "messages" }, signal);
+  node(taskId, step.id, "done");
   return "done";
 }
 
-async function checksStep(taskId: string, signal: AbortSignal): Promise<CheckResult[]> {
+async function checksStep(taskId: string, stepId: string, from: Actor, signal: AbortSignal): Promise<CheckResult[]> {
   const task = tasks.get(taskId)!;
   const repo = repos.get(task.repoId)!;
   const { worktree } = requireWorktree(taskId);
 
-  emit(taskId, { type: "handoff", actor: "forge", to: "checks", label: "" });
-  node(taskId, "checks", "active");
+  emit(taskId, { type: "handoff", actor: from, to: "checks", label: "" });
+  node(taskId, stepId, "active");
   const results = await runChecks(worktree, repo.checks, signal);
   if (signal.aborted) throw new AbortedError();
   emit(taskId, { type: "checks", actor: "checks", results });
   tasks.update(taskId, { checks: results });
-  node(taskId, "checks", results.every((r) => r.ok) ? "done" : "failed");
+  node(taskId, stepId, results.every((r) => r.ok) ? "done" : "failed");
   return results;
 }
 
@@ -264,34 +309,40 @@ function yourWords(taskId: string): string[] {
     .filter((text) => text.trim().length > 0);
 }
 
-async function hawkStep(taskId: string, checks: CheckResult[], signal: AbortSignal): Promise<Verdict> {
+async function reviewerStep(
+  taskId: string,
+  step: AgentStep,
+  checks: CheckResult[],
+  builderName: string,
+  signal: AbortSignal,
+): Promise<Verdict> {
   const task = tasks.get(taskId)!;
   const { worktree, baseSha } = requireWorktree(taskId);
-  const agent = agents.get(task.workspaceId, "hawk");
+  const agent = agents.get(task.workspaceId, step.agentId);
   const files = await git.diff(worktree, baseSha);
 
-  node(taskId, "hawk", "active");
+  node(taskId, step.id, "active");
   let verdict: Verdict;
   if (files.length === 0) {
     verdict = {
       approved: false,
       risk: "low",
-      summary: task.locale === "pt-BR" ? "O Forge não fez nenhuma mudança." : "Forge didn't change anything.",
+      summary: task.locale === "pt-BR" ? `O ${builderName} não fez nenhuma mudança.` : `${builderName} didn't change anything.`,
       issues: [],
     };
   } else {
     const diffText = files.map((f) => f.patch).join("");
     const output = await getProvider(agent.provider).run({
-      role: "hawk",
+      role: "reviewer",
       prompt: hawkPrompt(agent, task, rules.forRepo(repos.get(task.repoId)!), diffText, checks, yourWords(taskId)),
       cwd: worktree,
       permissionMode: "plan",
       // Plan mode alone doesn't stop the model from running commands (it ran `npm test`).
-      disallowedTools: HAWK_DISALLOWED_TOOLS,
+      disallowedTools: REVIEWER_DISALLOWED_TOOLS,
       locale: task.locale,
       round: task.round,
       signal,
-      emit: activityEmitter(taskId, "hawk"),
+      emit: activityEmitter(taskId, agent.id),
     });
     addCost(taskId, output.costUsd);
     const allPassed = checks.every((c) => c.ok);
@@ -305,41 +356,78 @@ async function hawkStep(taskId: string, checks: CheckResult[], signal: AbortSign
     if (!allPassed) verdict.approved = false;
   }
 
-  emit(taskId, { type: "verdict", actor: "hawk", verdict, round: task.round });
+  emit(taskId, { type: "verdict", actor: agent.id, verdict, round: task.round });
   tasks.update(taskId, { verdict });
-  node(taskId, "hawk", verdict.approved ? "done" : "warn");
+  node(taskId, step.id, verdict.approved ? "done" : "warn");
   return verdict;
 }
 
-/** Forge → checks → Hawk, repeated until approval, a question, or the round limit. */
-async function loop(taskId: string, first: ForgeMode, signal: AbortSignal): Promise<void> {
-  let mode = first;
-  for (;;) {
-    if ((await forgeStep(taskId, mode, signal)) === "question") return;
-    const checks = await checksStep(taskId, signal);
-    const verdict = await hawkStep(taskId, checks, signal);
-    const task = tasks.get(taskId)!;
+function nextRound(taskId: string, raiseLimit: boolean): void {
+  const task = tasks.get(taskId)!;
+  const round = task.round + 1;
+  tasks.update(taskId, { round, ...(raiseLimit ? { maxRounds: Math.max(task.maxRounds, round) } : {}) });
+  emit(taskId, { type: "round", actor: "system", round });
+}
 
-    // Messages that arrived while checks or Hawk ran get one more Forge round, even after approval.
-    if (inbox.get(taskId)?.length) {
-      tasks.update(taskId, { round: task.round + 1, maxRounds: Math.max(task.maxRounds, task.round + 1) });
-      emit(taskId, { type: "round", actor: "system", round: task.round + 1 });
-      mode = verdict.approved ? { kind: "messages" } : { kind: "fix" };
+/**
+ * Runs the task's flow from one step to the end: builders build, checks run, reviewers send
+ * work back to their builder until they approve or rounds run out. Stops early when an agent
+ * asks a question. At the end the task waits for you.
+ */
+async function runFlow(taskId: string, fromStep: string, firstMode: BuilderMode, signal: AbortSignal): Promise<void> {
+  const flow = flowOf(tasks.get(taskId)!);
+  let i = flow.steps.findIndex((s) => s.id === fromStep);
+  if (i === -1) throw new FlowError(`This flow has no step "${fromStep}".`);
+  let mode = firstMode;
+  let checks: CheckResult[] | null = null;
+  let builder: Agent | null = null;
+
+  while (i < flow.steps.length) {
+    const task = tasks.get(taskId)!;
+    const step = flow.steps[i]!;
+
+    if (step.type === "checks") {
+      checks = await checksStep(taskId, step.id, builder?.id ?? "system", signal);
+      i++;
       continue;
     }
 
-    if (verdict.approved || task.round >= task.maxRounds) {
-      node(taskId, "you", "active");
-      setStatus(taskId, "review");
-      return;
+    const agent = agents.get(task.workspaceId, step.agentId);
+    if (agent.role === "builder") {
+      if ((await builderStep(taskId, step, mode, signal)) === "question") return;
+      builder = agent;
+      mode = { kind: "start" };
+      i++;
+      continue;
     }
 
-    const count = verdict.issues.length + checks.filter((c) => !c.ok).length;
-    emit(taskId, { type: "handoff", actor: "hawk", to: "forge", label: String(count) });
-    tasks.update(taskId, { round: task.round + 1 });
-    emit(taskId, { type: "round", actor: "system", round: task.round + 1 });
-    mode = { kind: "fix" };
+    const verdict = await reviewerStep(taskId, step, checks ?? [], builder?.name ?? "Forge", signal);
+    const back = sendBackIndex(task, flow, i);
+    const current = tasks.get(taskId)!;
+
+    // Messages that arrived while checks or the review ran get one more round, even after approval.
+    if (back !== -1 && inbox.get(taskId)?.length) {
+      nextRound(taskId, true);
+      mode = verdict.approved ? { kind: "messages" } : { kind: "fix" };
+      i = back;
+      continue;
+    }
+
+    const limit = step.maxRounds ?? current.maxRounds;
+    if (back !== -1 && !verdict.approved && current.round < limit) {
+      const count = verdict.issues.length + (checks ?? []).filter((c) => !c.ok).length;
+      const target = flow.steps[back] as AgentStep;
+      emit(taskId, { type: "handoff", actor: agent.id, to: target.agentId, label: String(count) });
+      nextRound(taskId, false);
+      mode = { kind: "fix" };
+      i = back;
+      continue;
+    }
+    i++;
   }
+
+  node(taskId, "you", "active");
+  setStatus(taskId, "review");
 }
 
 /** Runs work in the background with a stop handle, turning failures into task states. */
@@ -388,10 +476,12 @@ export function startTask(taskId: string): void {
     const worktreePath = join(config.worktreesDir, task.id);
     await git.createWorktree(repo.path, branch, worktreePath, baseSha);
     taskState.set(taskId, { worktreePath, baseSha });
-    tasks.update(taskId, { branch, baseBranch, round: 1 });
+    // Copy the flow now, so editing it later doesn't change a task that already started.
+    const flow = flowOf(task);
+    tasks.update(taskId, { branch, baseBranch, round: 1, flow });
     emit(taskId, { type: "round", actor: "system", round: 1 });
 
-    await loop(taskId, { kind: "start" }, signal);
+    await runFlow(taskId, flow.steps[0]!.id, { kind: "start" }, signal);
   });
 }
 
@@ -437,14 +527,17 @@ export function answerQuestion(
   }
   node(taskId, "you", "done");
   setStatus(taskId, "running", { question: null });
-  drive(taskId, (signal) => loop(taskId, { kind: "answer", answer, form: data || replan ? form : undefined, data, note: extra.note, replan }, signal));
+  const fromStep = taskState.get(taskId).resumeStep ?? lastBuilderId(task, flowOf(task));
+  drive(taskId, (signal) =>
+    runFlow(taskId, fromStep, { kind: "answer", answer, form: data || replan ? form : undefined, data, note: extra.note, replan }, signal),
+  );
 }
 
 /**
  * A message from you, whatever the task is doing:
  * - waiting for an answer: it is the answer;
  * - waiting for review: it sends the work back with it as notes;
- * - running: it reaches Forge now (interrupting its step) or at its next step.
+ * - running: it reaches the builder now (interrupting its step) or at its next step.
  */
 export function sendMessage(taskId: string, text: string, delivery: MessageDelivery): void {
   const task = tasks.get(taskId);
@@ -453,8 +546,8 @@ export function sendMessage(taskId: string, text: string, delivery: MessageDeliv
   if (task.status === "review") return sendBack(taskId, text);
   if (task.status !== "running") throw new FlowError("This task has finished. Start a new one to keep going.");
 
-  // "Now" only interrupts while Forge is working; during checks or review it waits for Forge's next step.
-  const step = forgeSteps.get(taskId);
+  // "Now" only interrupts while a builder is working; during checks or review it waits for the next builder step.
+  const step = builderSteps.get(taskId);
   const interrupts = delivery === "now" && step !== undefined && !step.signal.aborted;
   emit(taskId, { type: "message", actor: "you", text, delivery: interrupts ? "now" : "later" });
   inbox.set(taskId, [...(inbox.get(taskId) ?? []), text]);
@@ -473,13 +566,12 @@ export function sendBack(taskId: string, notes: string): void {
   const task = tasks.get(taskId);
   if (!task || task.status !== "review") throw new FlowError("Only tasks waiting for review can be sent back.");
 
-  const round = task.round + 1;
   emit(taskId, { type: "text", actor: "you", text: notes });
-  tasks.update(taskId, { round, maxRounds: Math.max(task.maxRounds, round) });
-  emit(taskId, { type: "round", actor: "system", round });
+  nextRound(taskId, true);
   node(taskId, "you", "done");
   setStatus(taskId, "running");
-  drive(taskId, (signal) => loop(taskId, { kind: "notes", notes }, signal));
+  const fromStep = lastBuilderId(task, flowOf(task));
+  drive(taskId, (signal) => runFlow(taskId, fromStep, { kind: "notes", notes }, signal));
 }
 
 export async function mergeTask(taskId: string, exclude: string[]): Promise<Task> {

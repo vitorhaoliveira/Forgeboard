@@ -1,4 +1,4 @@
-import type { AgentId, ForgeCommands, Locale, ProviderId } from "@forgeboard/shared";
+import type { AgentRole, ForgeCommands, Locale, ProviderId } from "@forgeboard/shared";
 
 /** What a provider reports while an agent works. The orchestrator adds who said it. */
 export type AgentActivity =
@@ -7,7 +7,8 @@ export type AgentActivity =
   | { type: "tool_result"; toolUseId: string; output: string; isError: boolean };
 
 export interface StepInput {
-  role: AgentId;
+  /** Decides what the agent may do: builders edit files, reviewers only read. */
+  role: AgentRole;
   prompt: string;
   /** Directory the agent works in (the task's worktree). */
   cwd: string;
