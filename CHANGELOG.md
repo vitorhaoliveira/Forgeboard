@@ -2,7 +2,9 @@
 
 All notable changes to Forgeboard are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.9.2] — 2026-11-11
+
+Polish: fewer stale decisions, rules and wasted steps.
 
 ### Changed
 
