@@ -1,5 +1,7 @@
 import { existsSync, statSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { readdir } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { getCookie } from "hono/cookie";
@@ -17,6 +19,8 @@ import {
   WORKSPACE_COLORS,
   type Agent,
   type Flow,
+  type FolderEntry,
+  type FolderListing,
   type FlowProblem,
   type HouseRule,
   type Repo,
@@ -218,6 +222,53 @@ app.delete("/api/workspaces/:id", (c) => {
   }
   workspaces.remove(ws.id);
   return c.body(null, 204);
+});
+
+// ---------- Folders ----------
+
+const MAX_FOLDERS = 500;
+
+/**
+ * Subfolders of a folder (your home by default), so the UI can pick a repository without typing
+ * its path. Only folder names, never file contents; hidden folders are left out.
+ */
+app.get("/api/folders", async (c) => {
+  const raw = c.req.query("path");
+  const home = homedir();
+  const path = resolve(raw ? raw.replace(/^~(?=$|\/)/, home) : home);
+  let dirents;
+  try {
+    dirents = await readdir(path, { withFileTypes: true });
+  } catch {
+    throw new HttpError(400, `Can't open ${path}.`);
+  }
+  const isDir = (full: string, d: { isDirectory(): boolean; isSymbolicLink(): boolean }) => {
+    if (d.isDirectory()) return true;
+    if (!d.isSymbolicLink()) return false;
+    try {
+      return statSync(full).isDirectory();
+    } catch {
+      return false;
+    }
+  };
+  const entries: FolderEntry[] = dirents
+    .filter((d) => !d.name.startsWith(".") && isDir(join(path, d.name), d))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
+    .slice(0, MAX_FOLDERS)
+    .map((d) => {
+      const full = join(path, d.name);
+      return { name: d.name, path: full, isRepo: existsSync(join(full, ".git")), added: Boolean(repos.findByPath(full)) };
+    });
+  const parent = dirname(path);
+  const listing: FolderListing = {
+    path,
+    parent: parent === path ? null : parent,
+    home,
+    isRepo: existsSync(join(path, ".git")),
+    added: Boolean(repos.findByPath(path)),
+    entries,
+  };
+  return c.json(listing);
 });
 
 // ---------- Repos ----------

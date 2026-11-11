@@ -7,6 +7,7 @@ import { ChevronRight, ListChecks, Loader2, SlidersHorizontal } from "lucide-rea
 import { isActive, isFinished, needsYou, type Task } from "@forgeboard/shared";
 import { api } from "@/lib/api";
 import { useTaskAgents } from "@/lib/use-task-agents";
+import { ChooseFolderButton } from "./folder-picker";
 import { useAppState, WorkspaceScope } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
 import { AssumptionsCard, QuestionCard, RecentRow, ReviewCard, toCheck } from "./desk-cards";
@@ -26,10 +27,14 @@ function AddRepoInline({ workspaceId }: { workspaceId: string }) {
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    await add(path);
+  }
+
+  async function add(repoPath: string) {
     setBusy(true);
     setError(null);
     try {
-      await api.addRepo(workspaceId, path);
+      await api.addRepo(workspaceId, repoPath);
       setPath("");
       await refreshRepos();
     } catch (err) {
@@ -42,7 +47,8 @@ function AddRepoInline({ workspaceId }: { workspaceId: string }) {
   return (
     <Card className="flex flex-col gap-3 border-dashed p-5">
       <p className="text-[13.5px] text-muted">{tw("emptyRepos")}</p>
-      <form onSubmit={submit} className="flex gap-2">
+      <form onSubmit={submit} className="flex flex-wrap gap-2">
+        <ChooseFolderButton variant="primary" onPick={(p) => void add(p)} />
         <label htmlFor="ws-add-repo" className="sr-only">
           {tw("addRepoHere")}
         </label>
@@ -53,7 +59,7 @@ function AddRepoInline({ workspaceId }: { workspaceId: string }) {
           placeholder={t("addPlaceholder")}
           className="h-[34px] min-w-0 grow rounded-lg border border-border bg-bg px-3 font-mono text-[12.5px] outline-none focus:border-border-strong"
         />
-        <Button type="submit" variant="primary" disabled={!path.trim() || busy}>
+        <Button type="submit" disabled={!path.trim() || busy}>
           {busy && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
           {tc("add")}
         </Button>

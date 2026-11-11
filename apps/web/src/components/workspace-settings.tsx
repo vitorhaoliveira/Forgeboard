@@ -11,6 +11,7 @@ import { useAppState, WorkspaceScope } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
 import { AgentCard, NewAgentCard } from "./crew-view";
 import { useFlowName } from "./flow-graph";
+import { ChooseFolderButton } from "./folder-picker";
 import { ColorPicker } from "./new-workspace-dialog";
 import { RulesEditor, type RuleTarget } from "./rules-editor";
 import { Button, Card, Chip } from "./ui";
@@ -209,8 +210,12 @@ export function WorkspaceSettings({ workspaceId }: { workspaceId: string }) {
 
   async function addRepo(e: FormEvent) {
     e.preventDefault();
+    await addRepoAt(repoPath);
+  }
+
+  async function addRepoAt(path: string) {
     await act(async () => {
-      await api.addRepo(workspaceId, repoPath);
+      await api.addRepo(workspaceId, path);
       setRepoPath("");
       await refreshRepos();
     });
@@ -301,7 +306,8 @@ export function WorkspaceSettings({ workspaceId }: { workspaceId: string }) {
                   ))}
                 </div>
               )}
-              <form onSubmit={addRepo} className="flex gap-2">
+              <form onSubmit={addRepo} className="flex flex-wrap gap-2">
+                <ChooseFolderButton onPick={(p) => void addRepoAt(p)} />
                 <label htmlFor="ws-settings-repo" className="sr-only">
                   {t("addRepo")}
                 </label>

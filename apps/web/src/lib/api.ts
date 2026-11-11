@@ -8,6 +8,7 @@ import {
   type DiffFile,
   type Flow,
   type FlowInput,
+  type FolderListing,
   type FormAnswer,
   type MessageDelivery,
   type HouseRule,
@@ -71,6 +72,9 @@ const realApi = {
   updateWorkspace: (id: string, data: Partial<Omit<Workspace, "id" | "createdAt">>) =>
     request<Workspace>(`/api/workspaces/${id}`, patch(data)),
   removeWorkspace: (id: string) => request<void>(`/api/workspaces/${id}`, del),
+
+  /** Subfolders of a folder on this machine (home by default), for picking a repository. */
+  folders: (path?: string) => request<FolderListing>(`/api/folders${path ? `?path=${encodeURIComponent(path)}` : ""}`),
 
   repos: (workspaceId?: string) => request<Repo[]>(`/api/repos${wsQuery(workspaceId)}`),
   addRepo: (workspaceId: string, path: string) => request<Repo>("/api/repos", post({ path, workspaceId })),
