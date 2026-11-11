@@ -131,7 +131,7 @@ export function FlowGraph({ states, notes = {}, loopActive, loopLabel, selected,
         );
         const style = { left: STEP * i, top: TOP, width: NODE_W };
         return actor && onSelect ? (
-          <button key={n} type="button" onClick={() => onSelect(actor)} aria-pressed={isSelected} className={className} style={style}>
+          <button key={n} type="button" onClick={() => onSelect(actor)} aria-pressed={Boolean(isSelected)} className={className} style={style}>
             {content}
           </button>
         ) : (

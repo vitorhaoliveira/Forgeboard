@@ -194,8 +194,8 @@
   "crew": {
     "title": "Equipe padrão",
     "subtitle": "Os workspaces usam esta equipe, a menos que tenham uma própria. Ajuste cada agente: nome, personalidade, qual IA roda ele e instruções extras.",
-    "roleForge": "Construtor · edita arquivos e roda comandos",
-    "roleHawk": "Revisor · somente leitura, recebe os resultados das verificações",
+    "roleBuilder": "Construtor · edita arquivos e roda comandos",
+    "roleReviewer": "Revisor · somente leitura, recebe os resultados das verificações",
     "name": "Nome",
     "personality": "Personalidade",
     "mentor": "Mentor",
@@ -210,7 +210,21 @@
     "noRules": "Nenhuma regra ainda. Responda uma pergunta com “Lembrar como regra da casa” ou adicione aqui.",
     "source": "{source, select, you {Adicionada por você} answer {Da sua resposta} hawk {Sugerida pelo Hawk} other {}} · {time}",
     "toggleRule": "Ligar ou desligar a regra",
-    "customized": "personalizado"
+    "customized": "personalizado",
+    "newAgent": "Novo agente",
+    "newAgentHint": "Um construtor que edita arquivos, ou um revisor que só lê.",
+    "crewFull": "Uma equipe pode ter no máximo {max} agentes.",
+    "namePlaceholder": "ex.: Scribe",
+    "role": "Papel",
+    "builder": "Constrói",
+    "reviewer": "Revisa",
+    "builderHint": "Edita arquivos e roda comandos",
+    "reviewerHint": "Lê a mudança e aprova ou devolve",
+    "builderPlaceholder": "ex.: Escreva e atualize a documentação a cada mudança.",
+    "reviewerPlaceholder": "ex.: Procure só problemas de segurança: segredos, injeção, entrada insegura.",
+    "newAgentFlows": "Para colocar para trabalhar, adicione a um fluxo (Fluxos, chegando na v2.0).",
+    "create": "Criar agente",
+    "confirmDelete": "Excluir {name}"
   },
   "settings": {
     "title": "Configurações",

@@ -23,6 +23,8 @@ interface AppState {
   /** Crew per workspace id; "default" holds the default crew. */
   crews: Record<string, Agent[]>;
   agentName: (id: AgentId, workspaceId?: string) => string;
+  /** An agent of the crew a workspace uses (or of the default crew). */
+  agentOf: (id: AgentId, workspaceId?: string) => Agent | undefined;
   refreshCrews: () => Promise<void>;
   lastRepoId: string | null;
   rememberRepo: (id: string) => void;
@@ -153,12 +155,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     store(LAST_REPO_KEY, id);
   }, []);
 
-  const agentName = useCallback(
+  const agentOf = useCallback(
     (id: AgentId, workspaceId?: string) =>
-      (workspaceId && crews[workspaceId]?.find((a) => a.id === id)?.name) ||
-      crews.default?.find((a) => a.id === id)?.name ||
-      (id === "forge" ? "Forge" : "Hawk"),
+      (workspaceId ? crews[workspaceId]?.find((a) => a.id === id) : undefined) ?? crews.default?.find((a) => a.id === id),
     [crews],
+  );
+  // A deleted agent still shows in old runs: fall back to its id, capitalized ("forge" → "Forge").
+  const agentName = useCallback(
+    (id: AgentId, workspaceId?: string) => agentOf(id, workspaceId)?.name || id.charAt(0).toUpperCase() + id.slice(1),
+    [agentOf],
   );
 
   const value = useMemo<AppState>(
@@ -175,6 +180,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       providers,
       crews,
       agentName,
+      agentOf,
       refreshCrews,
       lastRepoId,
       rememberRepo,
@@ -186,7 +192,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setNotify,
       loaded,
     }),
-    [workspaces, refreshWorkspaces, repos, refreshRepos, tasks, refreshTasks, providers, crews, agentName, refreshCrews, lastRepoId, rememberRepo, newWorkspaceOpen, serverDown, locked, notify, setNotify, loaded],
+    [workspaces, refreshWorkspaces, repos, refreshRepos, tasks, refreshTasks, providers, crews, agentName, agentOf, refreshCrews, lastRepoId, rememberRepo, newWorkspaceOpen, serverDown, locked, notify, setNotify, loaded],
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

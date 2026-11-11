@@ -9,7 +9,9 @@ import { z } from "zod";
 import {
   isFinished,
   LOCALES,
+  MAX_AGENTS,
   WORKSPACE_COLORS,
+  type Agent,
   type HouseRule,
   type Repo,
   type RuleScope,
@@ -249,38 +251,93 @@ app.delete("/api/repos/:id", (c) => {
 
 app.get("/api/agents", (c) => c.json(agents.forWorkspace(c.req.query("workspaceId"))));
 
+const agentFields = {
+  name: z.string().trim().min(1).max(24),
+  provider: z.enum(["claude-code", "codex", "mock"]),
+  personality: z.enum(["mentor", "balanced", "strict"]),
+  instructions: z.string().max(2_000),
+};
+
+/** The crew an agent request works on: a workspace's own crew (switching it to "custom"), or the default crew. */
+function crewOf(workspaceId: string | undefined): Agent[] {
+  return agents.forWorkspace(workspaceId);
+}
+
+function mustGetAgent(workspaceId: string | undefined, id: string): Agent {
+  const agent = crewOf(workspaceId).find((a) => a.id === id);
+  if (!agent) throw new HttpError(404, "Agent not found");
+  return agent;
+}
+
+/** Creates an agent with a role, in the default crew or in a workspace's own crew. */
+app.post("/api/agents", async (c) => {
+  const workspaceId = c.req.query("workspaceId");
+  const input = await body(
+    c,
+    z.object({ ...agentFields, role: z.enum(["builder", "reviewer"]), instructions: agentFields.instructions.default("") }),
+  );
+  if (crewOf(workspaceId).length >= MAX_AGENTS) throw new FlowError(`A crew can have at most ${MAX_AGENTS} agents.`);
+  const agent: Agent = { id: nanoid(8), ...input };
+  if (workspaceId) {
+    const ws = mustGetWorkspace(workspaceId);
+    if (ws.crewMode !== "custom") {
+      // Moving to its own crew starts from a copy of the default crew.
+      for (const a of agents.defaults()) agents.saveForWorkspace(ws.id, a);
+      workspaces.save({ ...ws, crewMode: "custom" });
+    }
+    agents.saveForWorkspace(ws.id, agent);
+    return c.json(mustGetAgent(ws.id, agent.id), 201);
+  }
+  agents.saveDefault(agent);
+  return c.json(mustGetAgent(undefined, agent.id), 201);
+});
+
 app.patch("/api/agents/:id", async (c) => {
   const id = c.req.param("id");
-  if (id !== "forge" && id !== "hawk") throw new HttpError(404, "Agent not found");
   const workspaceId = c.req.query("workspaceId");
+  const current = mustGetAgent(workspaceId, id);
   const patch = await body(
     c,
     z.object({
-      name: z.string().trim().min(1).max(24).optional(),
-      provider: z.enum(["claude-code", "codex", "mock"]).optional(),
-      personality: z.enum(["mentor", "balanced", "strict"]).optional(),
-      instructions: z.string().max(2_000).optional(),
+      name: agentFields.name.optional(),
+      provider: agentFields.provider.optional(),
+      personality: agentFields.personality.optional(),
+      instructions: agentFields.instructions.optional(),
+      role: z.enum(["builder", "reviewer"]).optional(),
     }),
   );
+  // A built-in agent's role is fixed.
+  const next: Agent = { ...current, ...patch, role: current.builtIn ? current.role : (patch.role ?? current.role) };
   if (workspaceId) {
     const ws = mustGetWorkspace(workspaceId);
-    if (ws.crewMode !== "custom") workspaces.save({ ...ws, crewMode: "custom" });
-    agents.saveForWorkspace(ws.id, { ...agents.get(ws.id, id), ...patch });
-    return c.json(agents.get(ws.id, id));
+    if (ws.crewMode !== "custom") {
+      for (const a of agents.defaults()) agents.saveForWorkspace(ws.id, a);
+      workspaces.save({ ...ws, crewMode: "custom" });
+    }
+    agents.saveForWorkspace(ws.id, next);
+    return c.json(mustGetAgent(ws.id, id));
   }
-  const agent = { ...agents.defaults().find((a) => a.id === id)!, ...patch };
-  agents.saveDefault(agent);
-  return c.json(agent);
+  agents.saveDefault(next);
+  return c.json(mustGetAgent(undefined, id));
 });
 
-/** Puts a workspace's agent back to the default crew's settings. */
+/**
+ * Forge and Hawk: puts a workspace's copy back to the default crew's settings.
+ * Agents you created: deletes them from that crew.
+ */
 app.delete("/api/agents/:id", (c) => {
   const id = c.req.param("id");
   const workspaceId = c.req.query("workspaceId");
-  if ((id !== "forge" && id !== "hawk") || !workspaceId) throw new HttpError(400, "workspaceId is required");
-  const ws = mustGetWorkspace(workspaceId);
-  agents.saveForWorkspace(ws.id, agents.defaults().find((a) => a.id === id)!);
-  return c.json(agents.get(ws.id, id));
+  const agent = mustGetAgent(workspaceId, id);
+  if (agent.builtIn) {
+    if (!workspaceId) throw new HttpError(400, "Built-in agents can't be deleted.");
+    const ws = mustGetWorkspace(workspaceId);
+    agents.saveForWorkspace(ws.id, agents.defaults().find((a) => a.id === id)!);
+    return c.json(agents.get(ws.id, id));
+  }
+  if (workspaceId) agents.removeForWorkspace(mustGetWorkspace(workspaceId).id, id);
+  else agents.removeDefault(id);
+  return c.body(null, 204);
 });
 
 // ---------- House rules ----------

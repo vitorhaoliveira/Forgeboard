@@ -194,8 +194,8 @@
   "crew": {
     "title": "Default crew",
     "subtitle": "Workspaces use this crew unless they have their own. Shape each agent: name, personality, which AI runs it and extra instructions.",
-    "roleForge": "Builder · edits files and runs commands",
-    "roleHawk": "Reviewer · read only, gets the check results",
+    "roleBuilder": "Builder · edits files and runs commands",
+    "roleReviewer": "Reviewer · read only, gets the check results",
     "name": "Name",
     "personality": "Personality",
     "mentor": "Mentor",
@@ -210,7 +210,21 @@
     "noRules": "No rules yet. Answer a question with “Remember as a house rule” or add one here.",
     "source": "{source, select, you {Added by you} answer {From your answer} hawk {Suggested by Hawk} other {}} · {time}",
     "toggleRule": "Turn rule on or off",
-    "customized": "customized"
+    "customized": "customized",
+    "newAgent": "New agent",
+    "newAgentHint": "A builder that edits files, or a reviewer that only reads.",
+    "crewFull": "A crew can have at most {max} agents.",
+    "namePlaceholder": "e.g. Scribe",
+    "role": "Role",
+    "builder": "Builds",
+    "reviewer": "Reviews",
+    "builderHint": "Edits files and runs commands",
+    "reviewerHint": "Reads the change and approves or sends it back",
+    "builderPlaceholder": "e.g. Write and update the docs for every change.",
+    "reviewerPlaceholder": "e.g. Look only for security problems: secrets, injection, unsafe input.",
+    "newAgentFlows": "To put it to work, add it to a flow (Flows, coming in v2.0).",
+    "create": "Create agent",
+    "confirmDelete": "Delete {name}"
   },
   "settings": {
     "title": "Settings",

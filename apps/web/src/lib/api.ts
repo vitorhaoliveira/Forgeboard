@@ -2,6 +2,7 @@ import {
   DEFAULT_SERVER_PORT,
   type Agent,
   type CheckCommand,
+  type CreateAgentInput,
   type CreateTaskInput,
   type CreateWorkspaceInput,
   type DiffFile,
@@ -79,6 +80,10 @@ const realApi = {
   updateAgent: (id: string, data: Partial<Agent>, workspaceId?: string) =>
     request<Agent>(`/api/agents/${id}${wsQuery(workspaceId)}`, patch(data)),
   resetAgent: (id: string, workspaceId: string) => request<Agent>(`/api/agents/${id}${wsQuery(workspaceId)}`, del),
+  /** Creates an agent in the default crew, or in a workspace's own crew. */
+  createAgent: (input: CreateAgentInput, workspaceId?: string) => request<Agent>(`/api/agents${wsQuery(workspaceId)}`, post(input)),
+  /** Deletes an agent you created (built-in agents can only be reset). */
+  removeAgent: (id: string, workspaceId?: string) => request<void>(`/api/agents/${id}${wsQuery(workspaceId)}`, del),
 
   rules: (scope: RuleScope, id?: string) => request<HouseRule[]>(`/api/rules?scope=${scope}${id ? `&id=${id}` : ""}`),
   addRule: (scope: RuleScope, id: string | null, text: string, source: RuleSource = "you") =>
