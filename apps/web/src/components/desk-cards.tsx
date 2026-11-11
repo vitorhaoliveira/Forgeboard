@@ -9,6 +9,8 @@ import { GitMerge, Loader2 } from "lucide-react";
 import type { FormAnswer, Task } from "@forgeboard/shared";
 import { summarizeAnswer } from "@forgeboard/shared/a2ui";
 import { api } from "@/lib/api";
+import { stepGlyph } from "@/lib/flow-view";
+import { PlanSteps } from "./activity-feed";
 import { useTaskAgents } from "@/lib/use-task-agents";
 import { useAppState, WorkspaceScope } from "@/lib/app-state";
 import { cn, formatCost, timeAgo } from "@/lib/utils";
@@ -31,6 +33,7 @@ export function QuestionCard({ task, compact, showRepo }: { task: Task; compact?
   const { agentName, refreshTasks, repo } = useAppState();
   const { builder } = useTaskAgents(task);
   const gate = Boolean(task.question?.gate);
+  const planApproval = Boolean(task.question?.planApproval);
   const asker = task.question?.askedBy ?? builder;
   const [custom, setCustom] = useState(false);
   const [text, setText] = useState("");
@@ -116,7 +119,9 @@ export function QuestionCard({ task, compact, showRepo }: { task: Task; compact?
       <div className="flex flex-wrap items-center gap-2.5">
         <Glyph actor={gate ? "you" : asker} />
         <span className="text-xs font-medium text-accent">
-          {gate
+          {planApproval
+            ? t("planTitle", { name: agentName(asker, task.workspaceId) })
+            : gate
             ? t("gateTitle")
             : form
               ? isPlan
@@ -153,6 +158,11 @@ export function QuestionCard({ task, compact, showRepo }: { task: Task; compact?
       ) : (
         <>
           {q.context && <p className="text-[13.5px] text-muted">{q.context}</p>}
+          {planApproval && task.flow && (
+            <div className="rounded-[10px] border border-border bg-bg px-3 py-2.5 text-[13px]">
+              <PlanSteps steps={task.flow.steps} reasons={task.plan?.reasons ?? {}} />
+            </div>
+          )}
           <form onSubmit={submitCustom} className="flex gap-2">
             <label htmlFor={`answer-${task.id}`} className="sr-only">
               {t("placeholder")}
@@ -184,7 +194,7 @@ export function QuestionCard({ task, compact, showRepo }: { task: Task; compact?
                 {option}
               </button>
             ))}
-            {!gate && (
+            {!gate && !planApproval && (
               <label className="ml-auto inline-flex items-center gap-2 text-[12px] text-muted">
                 <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="accent-accent" />
                 {t("remember")}
@@ -306,7 +316,7 @@ export function WorkingCard({ task }: { task: Task }) {
         {flow.steps.map((step, i) => (
           <Fragment key={step.id}>
             {i > 0 && <span className="h-0.5 w-3.5 bg-border-strong" />}
-            <Glyph actor={step.type === "agent" ? step.agentId : step.type === "checks" ? "checks" : "you"} size={22} />
+            <Glyph actor={stepGlyph(step)} size={22} />
           </Fragment>
         ))}
         <span className="ml-2.5 text-xs text-info">{task.round > 0 ? tc("round", { round: task.round, max: task.maxRounds }) : ts("queued")}</span>

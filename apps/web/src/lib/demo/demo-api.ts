@@ -26,7 +26,7 @@ import type {
   Verdict,
   Workspace,
 } from "@forgeboard/shared";
-import { BUILD_AND_REVIEW } from "@forgeboard/shared";
+import { BUILD_AND_REVIEW, LEAD_DECIDES } from "@forgeboard/shared";
 import type { Api, StreamHandlers } from "../api";
 import { sanitizeAnswer } from "@forgeboard/shared/a2ui";
 import {
@@ -313,10 +313,12 @@ function seed(locale: Locale): Store {
   const defaults: Agent[] = [
     { id: "forge", name: "Forge", role: "builder", builtIn: true, provider: "claude-code", personality: "balanced", instructions: tr(L, "Keep changes small and focused.", "Mantenha as mudanças pequenas e focadas.") },
     { id: "hawk", name: "Hawk", role: "reviewer", builtIn: true, provider: "claude-code", personality: "strict", instructions: tr(L, "Block on failing checks and real bugs.", "Bloqueie verificações falhando e bugs de verdade.") },
+    { id: "lead", name: "Lead", role: "lead", builtIn: true, provider: "claude-code", personality: "balanced", instructions: tr(L, "Pick the smallest team that does the task well.", "Escolha o menor time que faça a tarefa bem.") },
   ];
   const acmeCrew: Agent[] = [
     { ...defaults[0]!, customized: false },
     { ...defaults[1]!, instructions: tr(L, "Block any change without a test. This API is public.", "Bloqueie qualquer mudança sem teste. Esta API é pública."), customized: true },
+    { ...defaults[2]!, customized: false },
   ];
 
   store = {
@@ -581,7 +583,7 @@ export const demoApi: Api = {
           };
     return ok(listing);
   },
-  flows: () => ok([BUILD_AND_REVIEW, ...s().flows]),
+  flows: () => ok([BUILD_AND_REVIEW, LEAD_DECIDES, ...s().flows]),
   createFlow: (input) => {
     const flow: Flow = { id: id(), ...input };
     s().flows.push(flow);

@@ -12,7 +12,8 @@ import { RulesEditor } from "./rules-editor";
 import { Button, Chip, SectionLabel } from "./ui";
 
 const PERSONALITIES: Personality[] = ["mentor", "balanced", "strict"];
-const ROLES: AgentRole[] = ["builder", "reviewer"];
+/** Roles of agents you create; the Lead is built in. */
+const ROLES: Exclude<AgentRole, "lead">[] = ["builder", "reviewer"];
 
 /** Edits one agent: the default crew's, or a workspace's own when workspaceId is given. */
 export function AgentCard({ agent, workspaceId }: { agent: Agent; workspaceId?: string }) {
@@ -66,7 +67,7 @@ export function AgentCard({ agent, workspaceId }: { agent: Agent; workspaceId?: 
             onChange={(e) => setDraft({ ...draft, name: e.target.value })}
             className="w-full rounded-md border border-transparent bg-transparent px-1 py-0.5 text-base font-semibold outline-none hover:border-border focus:border-border-strong"
           />
-          <div className="px-1 text-[12.5px] text-muted">{agent.role === "builder" ? t("roleBuilder") : t("roleReviewer")}</div>
+          <div className="px-1 text-[12.5px] text-muted">{agent.role === "builder" ? t("roleBuilder") : agent.role === "lead" ? t("roleLead") : t("roleReviewer")}</div>
         </div>
         {workspaceId && agent.customized && <Chip tone="info">{t("customized")}</Chip>}
       </div>
@@ -162,7 +163,7 @@ export function NewAgentCard({ workspaceId, count }: { workspaceId?: string; cou
   const { providers, refreshCrews, refreshWorkspaces } = useAppState();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
-  const [role, setRole] = useState<AgentRole>("builder");
+  const [role, setRole] = useState<Exclude<AgentRole, "lead">>("builder");
   const [personality, setPersonality] = useState<Personality>("balanced");
   const [provider, setProvider] = useState<ProviderId>("claude-code");
   const [instructions, setInstructions] = useState("");

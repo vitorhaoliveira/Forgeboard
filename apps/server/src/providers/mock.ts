@@ -46,7 +46,26 @@ export const mockProvider: Provider = {
     let steps: Step[];
     let text: string;
 
-    if (input.role === "reviewer") {
+    if (input.role === "lead") {
+      // The lead reads the task and picks Forge, the checks and Hawk (Hawk only after a note asking for less).
+      steps = [
+        [500, { type: "text", text: t(locale, "Reading the task and the team.", "Lendo a tarefa e o time.") }],
+        [600, { type: "tool_use", toolUseId: `l${round}`, name: "Glob", input: { pattern: "*" } }],
+        [400, { type: "tool_result", toolUseId: `l${round}`, output: "README.md", isError: false }],
+      ];
+      const lean = input.prompt.includes("asked for another one");
+      const plan = {
+        summary: lean
+          ? t(locale, "Smaller plan: Forge builds and the checks run.", "Plano menor: o Forge constrói e as verificações rodam.")
+          : t(locale, "Forge builds, the checks run and Hawk reviews: a small change with a second look.", "O Forge constrói, as verificações rodam e o Hawk revisa: mudança pequena com uma segunda olhada."),
+        steps: [
+          { type: "agent", agentId: "forge", why: t(locale, "Writes the change.", "Escreve a mudança.") },
+          { type: "checks", why: t(locale, "The repository has checks.", "O repositório tem verificações.") },
+          ...(lean ? [] : [{ type: "agent", agentId: "hawk", why: t(locale, "A second look before you merge.", "Uma segunda olhada antes do merge.") }]),
+        ],
+      };
+      text = `${plan.summary}\nFORGEBOARD_PLAN: ${JSON.stringify(plan)}`;
+    } else if (input.role === "reviewer") {
       steps = [
         [500, { type: "text", text: t(locale, "Reading the diff and the check results.", "Lendo o diff e os resultados das verificações.") }],
         [700, { type: "tool_use", toolUseId: `h${round}`, name: "Read", input: { file_path: file } }],

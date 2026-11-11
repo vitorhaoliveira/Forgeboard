@@ -18,14 +18,17 @@ export const DEFAULT_LOCALE: Locale = "en-US";
 export type AgentId = string;
 /** Who did something in a run: an agent's id, or one of these. */
 export type Actor = AgentId | "checks" | "you" | "system";
-export const BUILT_IN_AGENT_IDS = ["forge", "hawk"] as const;
+export const BUILT_IN_AGENT_IDS = ["forge", "hawk", "lead"] as const;
 export const SYSTEM_ACTORS = ["checks", "you", "system"] as const;
 export const MAX_AGENTS = 12;
 
 export type Personality = "mentor" | "balanced" | "strict";
 
-/** What an agent may do: a builder edits files in the worktree, a reviewer only reads. */
-export type AgentRole = "builder" | "reviewer";
+/**
+ * What an agent may do: a builder edits files in the worktree, a reviewer only reads,
+ * a lead only reads and plans which teammates work on a task.
+ */
+export type AgentRole = "builder" | "reviewer" | "lead";
 
 export type TaskStatus =
   | "queued"
@@ -53,13 +56,14 @@ export interface Agent {
   instructions: string;
   /** In a workspace with its own crew: true when this agent differs from the default. */
   customized?: boolean;
-  /** Forge and Hawk: can be edited but not deleted, and their role is fixed. */
+  /** Forge, Hawk and Lead: can be edited but not deleted, and their role is fixed. */
   builtIn?: boolean;
 }
 
 export interface CreateAgentInput {
   name: string;
-  role: AgentRole;
+  /** Agents you create build or review; the Lead is built in. */
+  role: Exclude<AgentRole, "lead">;
   provider: ProviderId;
   personality: Personality;
   instructions?: string;
@@ -78,7 +82,12 @@ export type FlowStep =
     }
   | { id: string; type: "checks" }
   /** Pauses and shows what was done so far: you continue, or send a note to the builder before it. */
-  | { id: string; type: "ask"; note?: string };
+  | { id: string; type: "ask"; note?: string }
+  /**
+   * A lead plans the rest of the flow when the task starts. A flow with a lead step has only that step;
+   * the task's copy of the flow gets the planned steps after it.
+   */
+  | { id: string; type: "lead"; agentId: AgentId };
 
 export type FlowStepType = FlowStep["type"];
 export const MAX_FLOW_STEPS = 12;
@@ -95,6 +104,7 @@ export interface Flow {
 }
 
 export const BUILD_AND_REVIEW_ID = "build-and-review";
+export const LEAD_DECIDES_ID = "lead-decides";
 
 /**
  * The v1 flow as data. Its step ids match the old graph nodes, so tasks
@@ -112,6 +122,27 @@ export const BUILD_AND_REVIEW: Flow = {
   ],
 };
 
+/** The Lead reads each task and picks the teammates it needs. */
+export const LEAD_DECIDES: Flow = {
+  id: LEAD_DECIDES_ID,
+  name: "Lead decides",
+  description: "The Lead reads the task and picks who builds, who reviews and whether the checks run.",
+  builtIn: true,
+  steps: [{ id: "lead", type: "lead", agentId: "lead" }],
+};
+
+/** What a lead planned for a task, with one line on why for each step. */
+export interface LeadPlan {
+  by: AgentId;
+  summary: string;
+  /** Why each planned step is there, by step id. */
+  reasons: Record<string, string>;
+  /** How many times you asked for another plan. */
+  revisions: number;
+}
+
+export const MAX_PLAN_REVISIONS = 5;
+
 /** Problems that stop a flow from running, as message keys with values (the UI translates them). */
 export type FlowProblem =
   | { code: "name" }
@@ -122,7 +153,11 @@ export type FlowProblem =
   | { code: "unknownAgent"; step: string; agentId: string }
   | { code: "sendBackNotBuilder"; step: string }
   | { code: "builderSendBack"; step: string }
-  | { code: "rounds"; step: string; max: number };
+  | { code: "rounds"; step: string; max: number }
+  /** A lead step must be the flow's only step: the lead plans the rest. */
+  | { code: "leadAlone" }
+  /** A lead step needs an agent whose role is lead, and only a lead step may use one. */
+  | { code: "leadRole"; step: string };
 
 /**
  * Checks a flow can run. `roleOf` gives the role of an agent of the crew that will run it
@@ -137,6 +172,13 @@ export function validateFlow(flow: Pick<Flow, "name" | "steps">, roleOf: (agentI
   flow.steps.forEach((step, i) => {
     if (seen.has(step.id)) problems.push({ code: "duplicateId", step: step.id });
     seen.add(step.id);
+    if (step.type === "lead") {
+      if (i !== 0 || flow.steps.length > 1) problems.push({ code: "leadAlone" });
+      const role = roleOf(step.agentId);
+      if (!role) problems.push({ code: "unknownAgent", step: step.id, agentId: step.agentId });
+      else if (role !== "lead") problems.push({ code: "leadRole", step: step.id });
+      return;
+    }
     if (step.type !== "agent") {
       if (i === 0) problems.push({ code: "firstNotBuilder" });
       return;
@@ -144,6 +186,10 @@ export function validateFlow(flow: Pick<Flow, "name" | "steps">, roleOf: (agentI
     const role = roleOf(step.agentId);
     if (!role) {
       problems.push({ code: "unknownAgent", step: step.id, agentId: step.agentId });
+      return;
+    }
+    if (role === "lead") {
+      problems.push({ code: "leadRole", step: step.id });
       return;
     }
     if (i === 0 && role !== "builder") problems.push({ code: "firstNotBuilder" });
@@ -316,6 +362,8 @@ export interface AgentQuestion {
   askedBy?: AgentId;
   /** An "Ask me" step of the flow: the first option continues, anything else goes back as a note. */
   gate?: boolean;
+  /** The Lead's plan, waiting for you: the first option approves it, anything else asks for another plan. */
+  planApproval?: boolean;
 }
 
 export interface Task {
@@ -330,6 +378,8 @@ export interface Task {
   maxRounds: number;
   /** The flow this task runs, copied when it starts so later edits don't change it. Missing means Build & Review. */
   flow?: Flow;
+  /** With a lead: what it planned and why. */
+  plan?: LeadPlan;
   branch: string | null;
   baseBranch: string | null;
   question: AgentQuestion | null;
@@ -369,6 +419,8 @@ export type RunEventPayload =
   | WithActor<{ type: "message"; text: string; delivery: MessageDelivery }>
   /** A builder stopped its step to read your message and resumed the same session. Missing agentId: Forge (before v2.0). */
   | WithActor<{ type: "steer"; agentId?: AgentId }>
+  /** The lead's plan: the steps it picked, with why. */
+  | WithActor<{ type: "plan"; summary: string; steps: FlowStep[]; reasons: Record<string, string> }>
   /** Decisions Forge made without asking ("decide" mode). */
   | WithActor<{ type: "assumptions"; items: string[] }>
   | WithActor<{ type: "error"; message: string }>;

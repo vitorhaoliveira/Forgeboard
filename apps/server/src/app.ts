@@ -413,6 +413,7 @@ const flowStepSchema = z.discriminatedUnion("type", [
   }),
   z.object({ id: z.string().min(1).max(40), type: z.literal("checks") }),
   z.object({ id: z.string().min(1).max(40), type: z.literal("ask"), note: z.string().max(300).optional() }),
+  z.object({ id: z.string().min(1).max(40), type: z.literal("lead"), agentId: z.string().min(1).max(40) }),
 ]);
 
 const flowSchema = z.object({
@@ -432,6 +433,8 @@ function describeProblem(p: FlowProblem): string {
     case "sendBackNotBuilder": return `The step "${p.step}" must send work back to a builder before it.`;
     case "builderSendBack": return `The step "${p.step}" builds, so it can't send work back.`;
     case "rounds": return `Rounds must be between 1 and ${p.max}.`;
+    case "leadAlone": return "A lead step must be the flow's only step: the lead plans the rest.";
+    case "leadRole": return `The step "${p.step}" needs an agent that leads, and only a lead step can use one.`;
   }
 }
 

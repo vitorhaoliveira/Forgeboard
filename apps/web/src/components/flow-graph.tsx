@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { Check, GitMerge, Hand, MessageCircleQuestion, Sparkles, X } from "lucide-react";
-import type { Actor, Flow, FlowStep, NodeState } from "@forgeboard/shared";
+import { BUILD_AND_REVIEW_ID, LEAD_DECIDES_ID, type Actor, type Flow, type FlowStep, type NodeState } from "@forgeboard/shared";
 import { sendBackIndex, stepActor, type RoleOf } from "@/lib/flow-view";
 import type { HandBack, NodeStates } from "@/lib/run-model";
 import { cn } from "@/lib/utils";
@@ -26,7 +26,8 @@ function Badge({ state }: { state: NodeState }) {
 /** The name of a flow: built-in ones are translated. */
 export function useFlowName() {
   const t = useTranslations("flow");
-  return (flow: Pick<Flow, "name" | "builtIn">) => (flow.builtIn ? t("name") : flow.name);
+  return (flow: Pick<Flow, "id" | "name" | "builtIn">) =>
+    !flow.builtIn ? flow.name : flow.id === LEAD_DECIDES_ID ? t("leadName") : flow.id === BUILD_AND_REVIEW_ID ? t("name") : flow.name;
 }
 
 export interface FlowGraphProps {
@@ -79,15 +80,16 @@ export function FlowGraph({ flow, roleOf, states, notes = {}, defaultRounds = 3,
 
   const label = (n: GraphNode) => {
     if (!n.step) return t(n.id as "task" | "you" | "merge");
-    return n.step.type === "agent" ? name(n.step.agentId) : n.step.type === "checks" ? t("checks") : t("ask");
+    return n.step.type === "agent" || n.step.type === "lead" ? name(n.step.agentId) : n.step.type === "checks" ? t("checks") : t("ask");
   };
   const role = (n: GraphNode) => {
     if (!n.step) return n.id === "task" ? t("roleTask") : n.id === "you" ? t("roleYou") : t("roleMerge");
+    if (n.step.type === "lead") return t("roleLead");
     if (n.step.type === "agent") return roleOf(n.step.agentId) === "reviewer" ? t("roleHawk") : t("roleForge");
     return n.step.type === "checks" ? t("roleChecks") : t("roleAsk");
   };
   const icon = (n: GraphNode) => {
-    if (n.step?.type === "agent") return <Glyph actor={n.step.agentId} />;
+    if (n.step?.type === "agent" || n.step?.type === "lead") return <Glyph actor={n.step.agentId} />;
     const Icon = !n.step ? (n.id === "task" ? Sparkles : n.id === "you" ? Hand : GitMerge) : n.step.type === "checks" ? Check : MessageCircleQuestion;
     return (
       <span className="grid size-[26px] shrink-0 place-items-center rounded-lg border border-border bg-panel-2 text-muted">

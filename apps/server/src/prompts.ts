@@ -5,6 +5,7 @@ import type {
   AskMode,
   AgentQuestion,
   ForgeCommands,
+  FlowStep,
   FormAnswer,
   PlanStep,
   CheckResult,
@@ -322,4 +323,119 @@ export function parseVerdict(text: string): Verdict | null {
     }
   }
   return null;
+}
+
+// ---------- Lead ----------
+
+const PLAN_MARKER = "FORGEBOARD_PLAN:";
+
+/** How the lead sees a teammate. */
+export interface Teammate {
+  id: string;
+  name: string;
+  role: "builder" | "reviewer";
+  instructions: string;
+}
+
+/**
+ * What the lead is told: the task, the team and the checks, and how to answer with a plan.
+ * With `note`, you asked for another plan after seeing `previous`.
+ */
+export function leadPrompt(
+  agent: Agent,
+  task: Task,
+  rules: HouseRule[],
+  team: Teammate[],
+  checks: string[],
+  replan?: { note: string; previous: string },
+): string {
+  const roster = team
+    .map(
+      (m) =>
+        `- id "${m.id}" · ${m.name} · ${m.role === "builder" ? "builds: edits files and runs commands" : "reviews: reads the change, approves it or sends it back"}${m.instructions ? `. Instructions: ${m.instructions}` : ""}`,
+    )
+    .join("\n");
+  const pt = task.locale === "pt-BR";
+  return `${header(agent, "lead", task, rules)}
+
+You plan which teammates work on this task. You never edit files or run commands; read files only if you need to understand the task.
+
+Task:
+${task.prompt}
+
+Your team:
+${roster}
+
+Checks this repository runs: ${checks.length ? checks.join(", ") : "none configured"}.
+${
+  replan
+    ? `\nYou proposed this plan:\n${replan.previous}\n\nThe user asked for another one: ${replan.note}\nPlan again with that in mind.\n`
+    : ""
+}
+Pick the smallest team that does this task well:
+- Start with an agent that builds.
+- Add {"type": "checks"} when the repository has checks and the change can break them.
+- Add a reviewer when a second look is worth it (risky, public or large changes). A reviewer sends work back to the builder right before it; when its review is about another builder's work, set "sendBackTo" to that builder's id. Set "maxRounds" (1-5) only when the default of 3 doesn't fit.
+- Add {"type": "ask", "note": "what to check"} only when the user should look before the next step.
+- Use only the ids above, at most 8 steps. The same agent may appear more than once.
+
+End your answer with exactly one line and nothing after it:
+${PLAN_MARKER} {"summary": "1-2 sentences for the user", "steps": [{"type": "agent", "agentId": "...", "why": "one line"}, {"type": "checks", "why": "..."}, {"type": "agent", "agentId": "...", "sendBackTo": "...", "why": "..."}]}
+Write "summary" and every "why" in ${pt ? "Brazilian Portuguese" : "US English"}.`;
+}
+
+export interface ParsedPlan {
+  summary: string;
+  steps: FlowStep[];
+  reasons: Record<string, string>;
+}
+
+/** Reads the lead's plan into flow steps with ids, or null when there is no usable plan line. */
+export function parsePlan(text: string): ParsedPlan | null {
+  const idx = text.lastIndexOf(PLAN_MARKER);
+  if (idx === -1) return null;
+  const raw = text.slice(idx + PLAN_MARKER.length).trim();
+  let data: unknown;
+  try {
+    data = JSON.parse(raw.slice(0, raw.lastIndexOf("}") + 1));
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== "object" || !Array.isArray((data as { steps?: unknown }).steps)) return null;
+  const { summary, steps: rawSteps } = data as { summary?: unknown; steps: unknown[] };
+  const used = new Set<string>();
+  const idFor = (base: string) => {
+    let id = base;
+    for (let n = 2; used.has(id); n++) id = `${base}-${n}`;
+    used.add(id);
+    return id;
+  };
+  const steps: FlowStep[] = [];
+  const reasons: Record<string, string> = {};
+  for (const s of rawSteps.slice(0, 8)) {
+    if (!s || typeof s !== "object") continue;
+    const o = s as Record<string, unknown>;
+    const why = typeof o.why === "string" ? o.why.trim().slice(0, 200) : "";
+    let step: FlowStep | null = null;
+    if (o.type === "agent" && typeof o.agentId === "string") {
+      const maxRounds = typeof o.maxRounds === "number" && Number.isInteger(o.maxRounds) ? Math.min(5, Math.max(1, o.maxRounds)) : undefined;
+      // "sendBackTo" names an agent: the last step of that agent so far.
+      const target = typeof o.sendBackTo === "string" ? [...steps].reverse().find((s) => s.type === "agent" && s.agentId === o.sendBackTo) : undefined;
+      step = { id: idFor(o.agentId), type: "agent", agentId: o.agentId, ...(maxRounds ? { maxRounds } : {}), ...(target ? { sendBackTo: target.id } : {}) };
+    } else if (o.type === "checks") {
+      step = { id: idFor("checks"), type: "checks" };
+    } else if (o.type === "ask") {
+      step = { id: idFor("ask"), type: "ask", ...(typeof o.note === "string" && o.note.trim() ? { note: o.note.trim().slice(0, 300) } : {}) };
+    }
+    if (!step) continue;
+    steps.push(step);
+    if (why) reasons[step.id] = why;
+  }
+  return { summary: typeof summary === "string" ? summary.trim().slice(0, 400) : "", steps, reasons };
+}
+
+/** The lead's message without the plan line. */
+export function stripPlan(text: string): string {
+  const idx = text.lastIndexOf(PLAN_MARKER);
+  return (idx === -1 ? text : text.slice(0, idx)).trim();
 }

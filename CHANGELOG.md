@@ -2,6 +2,18 @@
 
 All notable changes to Forgeboard are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.2.0] — 2026-11-11
+
+The Lead: picks the team for each task.
+
+### Added
+
+- **Lead decides** (a new built-in flow). The Lead reads the task, the team and the repository's checks, and plans who works on it: which agent builds, whether the checks run, who reviews and who a reviewer sends work back to, and where you get a pause. Each step comes with one line on why.
+- **You approve the plan** in "Ask first": it shows on the desk and in the conversation, step by step. Approve it, or write what to change ("it's trivial, skip the review") and the Lead plans again. In "Decide and tell me" the plan runs right away and stays in the conversation.
+- The Lead is a built-in agent in **Crew** (name, AI, personality and instructions are editable). Like a reviewer, it only reads: no shell and no edits. It can plan with any agent of the workspace's crew or the default crew, including the ones you created.
+- The run graph starts with the Lead and grows with the steps it picked; the timeline gets a Lead lane.
+- A plan that can't run (unknown agent, a reviewer first…) falls back to Build & Review, and says so.
+
 ## [2.1.0] — 2026-11-11
 
 Pick repositories from your folders.

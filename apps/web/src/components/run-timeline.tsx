@@ -12,6 +12,7 @@ const FIXED: Record<string, string> = {
   forge: "bg-accent",
   checks: "bg-muted",
   hawk: "bg-info",
+  lead: "bg-pink",
   you: "bg-transparent border border-dashed border-violet",
 };
 
@@ -31,7 +32,7 @@ export function RunTimeline({
   end: number;
   live: boolean;
 }) {
-  const color = (actor: Actor) => FIXED[actor] ?? (roleOf(actor) === "reviewer" ? "bg-success" : "bg-warning");
+  const color = (actor: Actor) => FIXED[actor] ?? (roleOf(actor) === "reviewer" ? "bg-success" : roleOf(actor) === "lead" ? "bg-pink" : "bg-warning");
   const t = useTranslations("run");
   const name = useActorName();
   const span = end - start;

@@ -12,12 +12,18 @@ export type RoleOf = (agentId: AgentId) => AgentRole | undefined;
  * Hawk reviews, anyone else builds.
  */
 export function roleOfIn(crew: Agent[] | undefined, fallback?: Agent[]): (agentId: AgentId) => AgentRole {
-  return (id) => (crew?.find((a) => a.id === id) ?? fallback?.find((a) => a.id === id))?.role ?? (id === "hawk" ? "reviewer" : "builder");
+  return (id) =>
+    (crew?.find((a) => a.id === id) ?? fallback?.find((a) => a.id === id))?.role ?? (id === "hawk" ? "reviewer" : id === "lead" ? "lead" : "builder");
 }
 
-/** The actor a step's graph node stands for: its agent, or the checks. Pauses have none. */
+/** The actor a step's graph node stands for: its agent (or lead), or the checks. Pauses have none. */
 export function stepActor(step: FlowStep): Actor | null {
-  return step.type === "agent" ? step.agentId : step.type === "checks" ? "checks" : null;
+  return step.type === "agent" || step.type === "lead" ? step.agentId : step.type === "checks" ? "checks" : null;
+}
+
+/** The glyph for a step in a row of steps: its agent, the checks, or you for a pause. */
+export function stepGlyph(step: FlowStep): Actor {
+  return stepActor(step) ?? "you";
 }
 
 /** Who takes part in a flow, in order of first appearance, then you. For filters and timeline lanes. */

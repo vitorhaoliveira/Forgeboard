@@ -80,7 +80,8 @@
     "decidedCount": "Decidi {count, plural, one {# coisa} other {# coisas}} por você",
     "looksGood": "Está ótimo",
     "correct": "Corrigir…",
-    "gateTitle": "Pausa no fluxo"
+    "gateTitle": "Pausa no fluxo",
+    "planTitle": "{name} propõe um plano"
   },
   "form": {
     "formTitle": "{name} tem {count, plural, one {# pergunta} other {# perguntas}}",
@@ -130,7 +131,9 @@
     "issuesTo": "{count, plural, one {# problema} other {# problemas}} → {name}",
     "loopLabel": "mudanças pedidas · até {max}×",
     "ask": "Me pergunte",
-    "roleAsk": "pausa para conferir"
+    "roleAsk": "pausa para conferir",
+    "roleLead": "monta o time",
+    "leadName": "Lead decide"
   },
   "run": {
     "stop": "Parar",
@@ -166,7 +169,9 @@
     "steered": "O {name} parou e retomou a mesma sessão com a sua mensagem",
     "decidedForYou": "Decidi por você",
     "decidedHint": "Responda aqui se quiser mudar algo.",
-    "messagesOnly": "Só mensagens"
+    "messagesOnly": "Só mensagens",
+    "planTitle": "{name} montou o time",
+    "sendsBackTo": "(devolve para {name})"
   },
   "decide": {
     "back": "← Mesa",
@@ -228,7 +233,8 @@
     "reviewerPlaceholder": "ex.: Procure só problemas de segurança: segredos, injeção, entrada insegura.",
     "newAgentFlows": "Para colocar para trabalhar, adicione a um fluxo em Fluxos.",
     "create": "Criar agente",
-    "confirmDelete": "Excluir {name}"
+    "confirmDelete": "Excluir {name}",
+    "roleLead": "Lead · lê cada tarefa e escolhe quem trabalha nela"
   },
   "settings": {
     "title": "Configurações",
@@ -314,8 +320,12 @@
       "unknownAgent": "A etapa {position} usa {name}, que não está na equipe padrão.",
       "sendBackNotBuilder": "A etapa {position} precisa devolver para um construtor antes dela.",
       "builderSendBack": "A etapa {position} constrói, então não pode devolver trabalho.",
-      "rounds": "Etapa {position}: as rodadas precisam ficar entre 1 e {max}."
-    }
+      "rounds": "Etapa {position}: as rodadas precisam ficar entre 1 e {max}.",
+      "leadAlone": "A etapa do Lead precisa ser a única: o Lead planeja o resto.",
+      "leadRole": "A etapa {position} precisa de um agente que lidera."
+    },
+    "leadHint": "lê cada tarefa e escolhe quem trabalha nela",
+    "leadDescription": "O Lead lê cada tarefa e escolhe quem constrói, quem revisa e se as verificações rodam. Você aprova o plano, ou ele segue direto em “Decidir e me avisar”."
   },
   "ws": {
     "all": "Todos os workspaces",
