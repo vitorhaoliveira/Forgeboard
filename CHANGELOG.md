@@ -2,6 +2,16 @@
 
 All notable changes to Forgeboard are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.9.1] — 2026-11-11
+
+Review fixes: found by testing v1.9 with Claude Code.
+
+### Fixed
+
+- **Hawk can no longer run commands.** With Claude Code, plan mode didn't stop the reviewer from using the shell: in testing it ran `npm test`, which runs the repository's code even in **Restricted** mode. Hawk now runs without the shell and edit tools (`--disallowedTools`), so it can only read files, as documented.
+- **Hawk knows what you said mid-run.** Your messages, answers and notes are now part of what Hawk reviews against. Before, a function you asked for with "Now" was flagged as "not requested" (scope creep).
+- **"At the next pause" no longer costs a whole round.** A message sent while Forge works now reaches it right when its step ends, before the checks and the review. Before, it waited until after Hawk's review and then started a new round, so the checks and the review ran twice.
+
 ## [1.9.0] — 2026-11-11
 
 Talk to the crew: a conversation instead of answer cards.

@@ -76,6 +76,7 @@ export const claudeCodeProvider: Provider = {
       ];
       if (input.resumeSession) args.push("--resume", input.resumeSession);
       if (input.allowedTools?.length) args.push("--allowedTools", ...input.allowedTools);
+      if (input.disallowedTools?.length) args.push("--disallowedTools", ...input.disallowedTools);
 
       const child = spawn(config.claudeBin, args, { cwd: input.cwd, stdio: ["ignore", "pipe", "pipe"] });
 
