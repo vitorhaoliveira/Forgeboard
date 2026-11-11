@@ -4,7 +4,12 @@ All notable changes to Forgeboard are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
-Groundwork for v2.0 (Flow studio). No visible change.
+Groundwork for v2.0 (Flow studio).
+
+### Added
+
+- **Create your own agents.** "New agent" in **Crew** (and in a workspace's own crew): pick a name, a role (**builds**: edits files and runs commands, or **reviews**: only reads and approves or sends back), the AI that runs it, a personality and extra instructions. Agents you create can be deleted; Forge and Hawk can't, and their roles are fixed. They join flows with the flow editor (next).
+- API: `POST /api/agents` and `DELETE /api/agents/:id` for agents you created (on Forge and Hawk, `DELETE` still resets a workspace's copy).
 
 ### Changed
 

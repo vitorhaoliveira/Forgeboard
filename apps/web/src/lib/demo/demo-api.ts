@@ -306,8 +306,8 @@ function seed(locale: Locale): Store {
   const blog = repo(personal, "blog", BLOG_CHECKS);
 
   const defaults: Agent[] = [
-    { id: "forge", name: "Forge", role: "builder", provider: "claude-code", personality: "balanced", instructions: tr(L, "Keep changes small and focused.", "Mantenha as mudanças pequenas e focadas.") },
-    { id: "hawk", name: "Hawk", role: "reviewer", provider: "claude-code", personality: "strict", instructions: tr(L, "Block on failing checks and real bugs.", "Bloqueie verificações falhando e bugs de verdade.") },
+    { id: "forge", name: "Forge", role: "builder", builtIn: true, provider: "claude-code", personality: "balanced", instructions: tr(L, "Keep changes small and focused.", "Mantenha as mudanças pequenas e focadas.") },
+    { id: "hawk", name: "Hawk", role: "reviewer", builtIn: true, provider: "claude-code", personality: "strict", instructions: tr(L, "Block on failing checks and real bugs.", "Bloqueie verificações falhando e bugs de verdade.") },
   ];
   const acmeCrew: Agent[] = [
     { ...defaults[0]!, customized: false },
@@ -520,9 +520,29 @@ export const demoApi: Api = {
   },
   resetAgent: (agentId, workspaceId) => {
     const st = s();
-    const crew = clone(crewFor(workspaceId)).map((a) => (a.id === agentId ? { ...st.defaults.find((d) => d.id === agentId as AgentId)!, customized: false } : a));
+    const crew = clone(crewFor(workspaceId)).map((a) => (a.id === agentId ? { ...st.defaults.find((d) => d.id === agentId)!, customized: false } : a));
     st.overrides.set(workspaceId, crew);
     return ok(crew.find((a) => a.id === agentId)!);
+  },
+
+  createAgent: (input, workspaceId) => {
+    const st = s();
+    const agent: Agent = { id: id(), instructions: "", ...input, builtIn: false };
+    if (!workspaceId) {
+      st.defaults = [...st.defaults, agent];
+      return ok(agent);
+    }
+    const w = st.workspaces.find((x) => x.id === workspaceId)!;
+    const crew = [...clone(crewFor(workspaceId)), { ...agent, customized: false }];
+    w.crewMode = "custom";
+    st.overrides.set(workspaceId, crew);
+    return ok(agent);
+  },
+  removeAgent: (agentId, workspaceId) => {
+    const st = s();
+    if (!workspaceId) st.defaults = st.defaults.filter((a) => a.id !== agentId || a.builtIn);
+    else st.overrides.set(workspaceId, clone(crewFor(workspaceId)).filter((a) => a.id !== agentId || a.builtIn));
+    return ok(undefined);
   },
 
   rules: (scope, target) =>

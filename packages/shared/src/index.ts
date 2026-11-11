@@ -14,8 +14,13 @@ export type Locale = "en-US" | "pt-BR";
 export const LOCALES: Locale[] = ["en-US", "pt-BR"];
 export const DEFAULT_LOCALE: Locale = "en-US";
 
-export type AgentId = "forge" | "hawk";
+/** "forge" and "hawk" are the built-in agents; agents you create get a generated id. */
+export type AgentId = string;
+/** Who did something in a run: an agent's id, or one of these. */
 export type Actor = AgentId | "checks" | "you" | "system";
+export const BUILT_IN_AGENT_IDS = ["forge", "hawk"] as const;
+export const SYSTEM_ACTORS = ["checks", "you", "system"] as const;
+export const MAX_AGENTS = 12;
 
 export type Personality = "mentor" | "balanced" | "strict";
 
@@ -48,6 +53,16 @@ export interface Agent {
   instructions: string;
   /** In a workspace with its own crew: true when this agent differs from the default. */
   customized?: boolean;
+  /** Forge and Hawk: can be edited but not deleted, and their role is fixed. */
+  builtIn?: boolean;
+}
+
+export interface CreateAgentInput {
+  name: string;
+  role: AgentRole;
+  provider: ProviderId;
+  personality: Personality;
+  instructions?: string;
 }
 
 /** One step of a flow. Step ids are unique inside a flow and name the graph node. */

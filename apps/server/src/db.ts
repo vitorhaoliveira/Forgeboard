@@ -337,6 +337,10 @@ const DEFAULT_AGENTS: Agent[] = [
   },
 ];
 
+function isBuiltIn(id: AgentId): boolean {
+  return DEFAULT_AGENTS.some((d) => d.id === id);
+}
+
 function sameAgent(a: Agent, b: Agent): boolean {
   return a.name === b.name && a.provider === b.provider && a.personality === b.personality && a.instructions === b.instructions;
 }
@@ -354,13 +358,18 @@ export const agents = {
         }),
     );
     // A built-in agent's role is fixed (saved settings from before v2.0 have none).
-    return DEFAULT_AGENTS.map((d) => {
+    const builtIn = DEFAULT_AGENTS.map((d) => {
       const a = stored.get(d.id);
-      return a ? { ...a, role: d.role } : d;
+      return { ...(a ?? d), role: d.role, builtIn: true };
     });
+    const mine = [...stored.values()].filter((a) => !isBuiltIn(a.id)).map((a) => ({ ...a, builtIn: false }));
+    return [...builtIn, ...mine];
+  },
+  removeDefault(id: AgentId): void {
+    db.prepare("DELETE FROM agents WHERE id = ?").run(id);
   },
   saveDefault(agent: Agent): void {
-    const { customized: _c, ...data } = agent;
+    const { customized: _c, builtIn: _b, ...data } = agent;
     db.prepare("INSERT INTO agents (id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data").run(
       agent.id,
       JSON.stringify(data),
@@ -377,16 +386,29 @@ export const agents = {
         .all(ws.id)
         .map((r) => [String(r.agent_id), JSON.parse(String(r.data)) as Agent] as const),
     );
-    return defaults.map((d) => {
-      const o = overrides.get(d.id);
-      return o ? { ...o, role: d.role, customized: !sameAgent(o, d) } : { ...d, customized: false };
-    });
+    // A workspace with its own crew has a copy of every agent it uses, plus the ones it created itself.
+    const crew = defaults
+      .filter((d) => d.builtIn || overrides.has(d.id))
+      .map((d) => {
+        const o = overrides.get(d.id);
+        return o ? { ...o, role: d.builtIn ? d.role : o.role, builtIn: d.builtIn, customized: !sameAgent(o, d) } : { ...d, customized: false };
+      });
+    const own = [...overrides.values()]
+      .filter((o) => !defaults.some((d) => d.id === o.id))
+      .map((o) => ({ ...o, builtIn: false, customized: false }));
+    return [...crew, ...own];
   },
+  /** An agent of a workspace's crew. Throws if it doesn't exist (a flow may name a deleted agent). */
   get(workspaceId: string | undefined, id: AgentId): Agent {
-    return agents.forWorkspace(workspaceId).find((a) => a.id === id)!;
+    const agent = agents.forWorkspace(workspaceId).find((a) => a.id === id);
+    if (!agent) throw new Error(`The agent "${id}" isn't in this crew anymore.`);
+    return agent;
+  },
+  removeForWorkspace(workspaceId: string, id: AgentId): void {
+    db.prepare("DELETE FROM workspace_agents WHERE workspace_id = ? AND agent_id = ?").run(workspaceId, id);
   },
   saveForWorkspace(workspaceId: string, agent: Agent): void {
-    const { customized: _c, ...data } = agent;
+    const { customized: _c, builtIn: _b, ...data } = agent;
     db.prepare(
       "INSERT INTO workspace_agents (workspace_id, agent_id, data) VALUES (?, ?, ?) ON CONFLICT(workspace_id, agent_id) DO UPDATE SET data = excluded.data",
     ).run(workspaceId, agent.id, JSON.stringify(data));

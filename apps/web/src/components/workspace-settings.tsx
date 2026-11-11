@@ -9,7 +9,7 @@ import type { CheckCommand, ForgeCommands, Repo, WorkspaceColor } from "@forgebo
 import { api } from "@/lib/api";
 import { useAppState, WorkspaceScope } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
-import { AgentCard } from "./crew-view";
+import { AgentCard, NewAgentCard } from "./crew-view";
 import { ColorPicker } from "./new-workspace-dialog";
 import { RulesEditor, type RuleTarget } from "./rules-editor";
 import { Button, Card, Chip } from "./ui";
@@ -345,6 +345,7 @@ export function WorkspaceSettings({ workspaceId }: { workspaceId: string }) {
                   {(crews[workspaceId] ?? []).map((a) => (
                     <AgentCard key={a.id} agent={a} workspaceId={workspaceId} />
                   ))}
+                  <NewAgentCard workspaceId={workspaceId} count={(crews[workspaceId] ?? []).length} />
                 </div>
               )}
             </Section>
