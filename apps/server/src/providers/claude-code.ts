@@ -100,6 +100,7 @@ export const claudeCodeProvider: Provider = {
         }
         if (line.type === "system" && line.session_id) {
           sessionId = line.session_id;
+          input.onSession?.(line.session_id);
         } else if (line.type === "assistant") {
           for (const block of line.message.content) {
             if (block.type === "text" && "text" in block && block.text.trim()) {

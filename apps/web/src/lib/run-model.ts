@@ -59,13 +59,14 @@ export function runBounds(events: RunEvent[], task: Task, now: number): { start:
   return { start, end: Math.max(end, start + 1000) };
 }
 
-const QUESTION_MARKER = "FORGEBOARD_QUESTION:";
+/** Lines agents end their message with, for Forgeboard to read. They aren't shown. */
+const MARKERS = ["FORGEBOARD_QUESTION:", "FORGEBOARD_FORM:", "FORGEBOARD_ASSUMPTIONS:"];
 
 /** Agent text without machine-readable parts (question marker, Hawk's verdict json). */
 export function cleanAgentText(text: string): string {
   let out = text;
-  const q = out.indexOf(QUESTION_MARKER);
-  if (q !== -1) out = out.slice(0, q);
+  const cut = Math.min(...MARKERS.map((m) => out.indexOf(m)).filter((i) => i !== -1));
+  if (Number.isFinite(cut)) out = out.slice(0, cut);
   out = out.replace(/```json[\s\S]*?```\s*$/g, "");
   return out.trim();
 }

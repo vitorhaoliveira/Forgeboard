@@ -6,7 +6,7 @@
 
 <sub>The demo above runs in the browser with a simulated crew (`pnpm demo`). See [Live demo](#live-demo).</sub>
 
-> Status: **v1.8**. Codex as a provider, Install with `npx forgeboard`, agents ask with forms and editable plans (A2UI), public demo mode, Workspaces per project, built-in "Build & Review" flow, live run view, merge decision, editable crew and house rules, English (US) and Brazilian Portuguese. Next up (v2): design your own flows with drag-and-drop blocks.
+> Status: **v1.9**. A conversation with the crew (message it mid-run, "decide and tell me" mode), Codex as a provider, install with `npx forgeboard`, agents ask with forms and editable plans (A2UI), public demo mode, Workspaces per project, built-in "Build & Review" flow, live run view, merge decision, editable crew and house rules, English (US) and Brazilian Portuguese. Next up (v2): design your own flows with drag-and-drop blocks.
 
 ## How it works
 
@@ -20,7 +20,7 @@ your task → Forge (builds) → Checks (tests · lint · types) → Hawk (revie
 
 - **Every task runs in its own git worktree** (`~/.forgeboard/worktrees/<task>`), on a branch like `fb/add-pagination-ab12c`. Your checkout is never touched until you merge.
 - **Checks are objective.** Forgeboard runs your repo's own commands (detected from `package.json`, editable in Settings) after every build. Hawk can't approve while a check fails.
-- **Agents ask instead of guessing.** When Forge needs a product decision it pauses the run; the question shows up on your Desk with one-click answers. Its session is resumed with your answer.
+- **You talk to the crew.** Each run is a conversation: reply to questions by typing, or message Forge while it works and it picks your message up right away (same session). Prefer fewer interruptions? In **Decide and tell me** mode, Forge goes with its best guess and lists what it decided for you to check.
 - **Rich questions.** When several decisions are needed, Forge asks with a small form; for bigger tasks it proposes a plan you can edit before anything is built. Forms use [A2UI](https://a2ui.org/) with a fixed catalog of Forgeboard components, validated on the server and in the browser.
 - **The crew learns.** Answers can be saved as **house rules**, and Hawk suggests rules from what it sees in reviews. Every agent follows them on every task.
 - **One workspace per project.** Group a project's repositories in a workspace with its own crew and house rules (general → workspace → repository). The "All" desk shows what needs you across every workspace.
@@ -147,6 +147,7 @@ Key server files: `orchestrator.ts` (the Build & Review loop), `prompts.ts` (wha
 - [x] **v1.6 — Rich questions (A2UI)**: agents ask with small forms and editable plans
 - [x] **v1.7 — One-command install**: `npx forgeboard`, published to npm from a version tag
 - [x] **v1.8 — Codex**: OpenAI's Codex CLI as a provider for any agent, sandboxed
+- [x] **v1.9 — Conversation**: talk to the crew mid-run, reply by typing, "decide and tell me" mode
 - [ ] **v2 — Flow studio**: build your own flows (agents, checks, "ask me" gates, loops, parallel steps), custom agents
 - [ ] **v3 — More agents**: API-key providers, parallel runs, cost dashboard
 - [ ] **v4 — Routines**: scheduled and reusable tasks

@@ -1,10 +1,11 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { Agent, AgentId, ProviderInfo, Repo, Task, Workspace } from "@forgeboard/shared";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { needsYou, type Agent, type AgentId, type ProviderInfo, type Repo, type Task, type Workspace } from "@forgeboard/shared";
 import { api, ServerDownError, UnauthorizedError } from "./api";
 
 const LAST_REPO_KEY = "forgeboard:lastRepo";
+const NOTIFY_KEY = "forgeboard:notify";
 
 interface AppState {
   workspaces: Workspace[];
@@ -31,6 +32,9 @@ interface AppState {
   serverDown: boolean;
   /** True when the server needs the access key this browser doesn't have. */
   locked: boolean;
+  /** Browser notifications when an agent needs you (stored in this browser). */
+  notify: boolean;
+  setNotify: (on: boolean) => void;
   loaded: boolean;
 }
 
@@ -62,6 +66,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [newWorkspaceOpen, setNewWorkspaceOpen] = useState(false);
   const [serverDown, setServerDown] = useState(false);
   const [locked, setLocked] = useState(false);
+  const [notify, setNotifyState] = useState(false);
+  useEffect(() => setNotifyState(readStored(NOTIFY_KEY) === "1"), []);
+  const setNotify = useCallback((on: boolean) => {
+    setNotifyState(on);
+    try {
+      localStorage.setItem(NOTIFY_KEY, on ? "1" : "0");
+    } catch {
+      // storage blocked: the choice lasts this visit only
+    }
+  }, []);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => setLastRepoId(readStored(LAST_REPO_KEY)), []);
@@ -106,6 +120,25 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     void Promise.all([refreshWorkspaces(), refreshRepos(), refreshTasks(), refreshCrews()]).finally(() => setLoaded(true));
   }, [refreshWorkspaces, refreshRepos, refreshTasks, refreshCrews]);
 
+  // System notification when a task starts needing you, if the tab isn't in view.
+  const lastStatus = useRef<Map<string, string>>(new Map());
+  useEffect(() => {
+    const before = lastStatus.current;
+    const first = before.size === 0;
+    for (const task of tasks) {
+      const prev = before.get(task.id);
+      before.set(task.id, task.status);
+      if (first || !notify || prev === task.status || !needsYou(task.status)) continue;
+      if (typeof Notification === "undefined" || Notification.permission !== "granted" || document.visibilityState === "visible") continue;
+      const body = task.status === "waiting" ? task.question?.question ?? task.title : task.title;
+      const n = new Notification(task.status === "waiting" ? "Forgeboard · ?" : "Forgeboard · ✓", { body, tag: task.id });
+      n.onclick = () => {
+        window.focus();
+        window.location.href = `/runs/${task.id}`;
+      };
+    }
+  }, [tasks, notify]);
+
   // Keep statuses fresh everywhere. Polling a localhost server is cheap.
   useEffect(() => {
     const id = setInterval(() => {
@@ -149,9 +182,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setNewWorkspaceOpen,
       serverDown,
       locked,
+      notify,
+      setNotify,
       loaded,
     }),
-    [workspaces, refreshWorkspaces, repos, refreshRepos, tasks, refreshTasks, providers, crews, agentName, refreshCrews, lastRepoId, rememberRepo, newWorkspaceOpen, serverDown, locked, loaded],
+    [workspaces, refreshWorkspaces, repos, refreshRepos, tasks, refreshTasks, providers, crews, agentName, refreshCrews, lastRepoId, rememberRepo, newWorkspaceOpen, serverDown, locked, notify, setNotify, loaded],
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

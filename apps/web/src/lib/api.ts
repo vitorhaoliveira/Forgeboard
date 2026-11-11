@@ -6,6 +6,7 @@ import {
   type CreateWorkspaceInput,
   type DiffFile,
   type FormAnswer,
+  type MessageDelivery,
   type HouseRule,
   type ProviderInfo,
   type Repo,
@@ -94,6 +95,8 @@ const realApi = {
     request<Task>(`/api/tasks/${id}/answer`, post({ text, remember, ...extra })),
   sendBack: (id: string, notes: string) => request<Task>(`/api/tasks/${id}/send-back`, post({ notes })),
   merge: (id: string, exclude: string[] = []) => request<Task>(`/api/tasks/${id}/merge`, post({ exclude })),
+  message: (id: string, text: string, delivery: MessageDelivery) => request<Task>(`/api/tasks/${id}/message`, post({ text, delivery })),
+  ackAssumptions: (id: string) => request<Task>(`/api/tasks/${id}/assumptions/ack`, post()),
   discard: (id: string) => request<Task>(`/api/tasks/${id}/discard`, post()),
   stop: (id: string) => request<{ ok: boolean }>(`/api/tasks/${id}/stop`, post()),
   /** Follows a task's events after `after`. Returns a function that stops listening. */

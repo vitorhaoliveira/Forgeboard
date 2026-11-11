@@ -62,15 +62,23 @@
     "recent": "RECENT",
     "nothingWaiting": "When an agent has a question or finishes work, it shows up here.",
     "nobodyWorking": "Nobody is working right now.",
-    "startHint": "Type a task in the bar above and press Enter. Forge builds it, Hawk reviews it, you decide."
+    "startHint": "Type a task in the bar above and press Enter. Forge builds it, Hawk reviews it, you decide.",
+    "toCheck": "To check · not blocking"
   },
   "question": {
     "title": "{name} has a question",
     "waiting": "waiting {time}",
     "suggested": "suggested",
     "ownWords": "Answer in my own words…",
-    "placeholder": "Your answer",
-    "remember": "Remember as a house rule"
+    "placeholder": "Reply…",
+    "remember": "Remember as a house rule",
+    "openConversation": "Open conversation",
+    "seePlan": "See the plan",
+    "answerForm": "Answer ({count, plural, one {# question} other {# questions}})",
+    "stillWorking": "still working",
+    "decidedCount": "I decided {count, plural, one {# thing} other {# things}} for you",
+    "looksGood": "Looks good",
+    "correct": "Correct…"
   },
   "form": {
     "formTitle": "{name} has {count, plural, one {# question} other {# questions}}",
@@ -147,7 +155,14 @@
     "started": "started {time}",
     "notFound": "Task not found.",
     "replay": "Replay",
-    "replaying": "Replaying…"
+    "replaying": "Replaying…",
+    "sentBack": "Sent back with a note",
+    "deliveredNow": "Delivered now · interrupted the step",
+    "deliveredLater": "Reaches Forge at its next step",
+    "steered": "{name} stopped and resumed the same session with your message",
+    "decidedForYou": "Decided for you",
+    "decidedHint": "Reply here if you want something changed.",
+    "messagesOnly": "Messages only"
   },
   "decide": {
     "back": "← Desk",
@@ -333,10 +348,39 @@
     "cmdStandardHint": "Edits files and runs npm, pnpm, yarn, bun, npx and node to install and test. In practice this can run any code on your machine: use it on repositories you trust.",
     "cmdRestricted": "Restricted",
     "cmdRestrictedHint": "Only edits files and uses git and ls to read. No commands: Forgeboard runs the checks afterwards and sends back any failures.",
-    "safetyNote": "Hawk never changes files or runs commands, in either mode. With Codex, its sandbox also keeps Forge from writing outside the task's folder; in Restricted it has no network (commands still run, isolated)."
+    "safetyNote": "Hawk never changes files or runs commands, in either mode. With Codex, its sandbox also keeps Forge from writing outside the task's folder; in Restricted it has no network (commands still run, isolated).",
+    "conversation": "Conversation and doubts",
+    "askTitle": "When an agent isn't sure",
+    "askHint": "Applies to every task in this workspace.",
+    "askAsk": "Ask first",
+    "askAskHint": "Stops and waits for your answer. Good when a wrong guess is costly, like data or public API changes.",
+    "askDecide": "Decide and tell me",
+    "askDecideHint": "Goes with its best guess and lists what it decided. Correct it in the conversation or at review. Only stops when a wrong guess would be destructive.",
+    "recommended": "recommended",
+    "planFirst": "{name} shows a plan before big tasks",
+    "planFirstHint": "When a task touches several files or layers, the steps show up for you to adjust before it starts.",
+    "interrupt": "Messages interrupt the work",
+    "interruptHint": "Your message arrives right away: the agent stops its step and resumes with it. Off, it waits for the next pause. You can switch it on each message.",
+    "notify": "Notify me in the browser when I'm needed",
+    "notifyHint": "A system notification when an agent asks something or finishes review, if Forgeboard isn't on screen. For this browser.",
+    "notifyUnsupported": "This browser doesn't allow notifications."
   },
   "demo": {
     "banner": "Live demo: a simulated crew runs in your browser. No AI is called and nothing touches a real repository.",
     "github": "Run it on your machine →"
+  },
+  "composer2": {
+    "finished": "This task has finished. Start a new one to keep going.",
+    "placeholderWaiting": "Answer or tell {name} anything…",
+    "placeholderReview": "Ask {name} for a change…",
+    "placeholderRunning": "Message {name}…",
+    "suggestions": "Suggested answers",
+    "formHint": "Answer with the form, or type here in your own words.",
+    "delivery": "When to deliver",
+    "now": "Now (interrupts)",
+    "later": "At the next pause",
+    "enterHint": "Enter sends · Shift+Enter new line",
+    "send": "Send",
+    "reviewHint": "Your message sends the work back to Forge as a note, for another round."
   }
 }

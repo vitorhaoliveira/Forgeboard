@@ -39,6 +39,9 @@ export const mockProvider: Provider = {
 
   async run(input: StepInput): Promise<StepOutput> {
     const { locale, cwd, round } = input;
+    input.onSession?.(input.resumeSession ?? `mock-${input.role}-${round}`);
+    const decide = input.prompt.includes("FORGEBOARD_ASSUMPTIONS");
+    const answeringMessage = input.prompt.includes("while you worked");
     const file = join(cwd, DEMO_FILE);
     let steps: Step[];
     let text: string;
@@ -68,7 +71,7 @@ export const mockProvider: Provider = {
             ],
           };
       text = `${verdict.summary}\n\n\`\`\`json\n${JSON.stringify(verdict, null, 2)}\n\`\`\``;
-    } else if (round === 1 && !input.resumeSession) {
+    } else if (round === 1 && !input.resumeSession && !decide) {
       // First step of Forge: explore, then ask a question.
       steps = [
         [500, { type: "text", text: t(locale, "Let me look at the project first.", "Deixa eu olhar o projeto primeiro.") }],
@@ -97,7 +100,15 @@ export const mockProvider: Provider = {
           },
         ],
       };
-      text = `${t(locale, "I need your input before I continue.", "Preciso da sua opinião antes de continuar.")}\nFORGEBOARD_FORM: ${JSON.stringify(form)}`;
+      text = input.prompt.includes('"kind": "plan"')
+        ? `${t(locale, "I need your input before I continue.", "Preciso da sua opinião antes de continuar.")}\nFORGEBOARD_FORM: ${JSON.stringify(form)}`
+        : // Plans turned off in this workspace: a plain question.
+          `${t(locale, "One decision before I continue.", "Uma decisão antes de continuar.")}\nFORGEBOARD_QUESTION: ${JSON.stringify({
+            question: form.fields[0]!.label,
+            context: form.context,
+            options: form.fields[0]!.options,
+            suggested: 0,
+          })}`;
     } else if (round === 1) {
       steps = [
         [500, { type: "text", text: t(locale, "Got it. Creating the file now.", "Entendido. Criando o arquivo agora.") }],
@@ -105,6 +116,14 @@ export const mockProvider: Provider = {
         [500, { type: "tool_result", toolUseId: "f3", output: "File created.", isError: false }],
       ];
       text = t(locale, `Created \`${DEMO_FILE}\` with the requested notes.`, `Criei o \`${DEMO_FILE}\` com as notas pedidas.`);
+      if (answeringMessage) steps.unshift([400, { type: "text", text: t(locale, "Got your message. Adjusting.", "Recebi sua mensagem. Ajustando.") }]);
+      if (decide) {
+        const assumptions = [
+          t(locale, "Put the notes in a separate file, to keep the README short", "Coloquei as notas num arquivo separado, para o README continuar curto"),
+          t(locale, "Added today's date at the top", "Adicionei a data de hoje no topo"),
+        ];
+        text += `\nFORGEBOARD_ASSUMPTIONS: ${JSON.stringify(assumptions)}`;
+      }
     } else {
       steps = [
         [500, { type: "text", text: t(locale, "Fixing what Hawk pointed out.", "Corrigindo o que o Hawk apontou.") }],

@@ -214,6 +214,13 @@ export function WorkspaceSettings({ workspaceId }: { workspaceId: string }) {
     });
   }
 
+  async function updateWs(patch: Parameters<typeof api.updateWorkspace>[1]) {
+    await act(async () => {
+      await api.updateWorkspace(workspaceId, patch);
+      await refreshWorkspaces();
+    });
+  }
+
   async function setForgeCommands(value: ForgeCommands) {
     await act(async () => {
       await api.updateWorkspace(workspaceId, { forgeCommands: value });
@@ -241,7 +248,7 @@ export function WorkspaceSettings({ workspaceId }: { workspaceId: string }) {
           <Link href={`/w/${workspaceId}`} className="block px-2.5 pb-3.5 text-[13px] text-muted hover:text-text">
             {t("back", { name: ws.name })}
           </Link>
-          {(["general", "repos", "crew", "safety", "rules", "danger"] as const).map((key) => (
+          {(["general", "repos", "crew", "conversation", "safety", "rules", "danger"] as const).map((key) => (
             <a key={key} href={`#${key}`} className="block rounded-[7px] px-2.5 py-[7px] text-[13px] text-muted hover:bg-panel-2 hover:text-text">
               {t(key)}
             </a>
@@ -342,6 +349,52 @@ export function WorkspaceSettings({ workspaceId }: { workspaceId: string }) {
               )}
             </Section>
 
+            <Section id="conversation" title={t("conversation")}>
+              <div role="radiogroup" aria-label={t("askTitle")} className="flex flex-col gap-2.5">
+                <div>
+                  <div className="text-[13.5px] font-medium">{t("askTitle")}</div>
+                  <div className="text-[12.5px] text-muted">{t("askHint")}</div>
+                </div>
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                  {(["ask", "decide"] as const).map((mode) => {
+                    const on = (ws.askMode ?? "ask") === mode;
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        onClick={() => !on && updateWs({ askMode: mode })}
+                        className={cn("flex flex-col gap-1 rounded-[10px] border px-3.5 py-3 text-left", on ? "border-border-strong bg-panel-2" : "border-border hover:border-border-strong")}
+                      >
+                        <span className="flex items-center gap-2 font-medium">
+                          {mode === "ask" ? t("askAsk") : t("askDecide")}
+                          {mode === "decide" && <Chip tone="accent">{t("recommended")}</Chip>}
+                          {on && <Check className="ml-auto size-3.5" aria-hidden="true" />}
+                        </span>
+                        <span className="text-[12.5px] text-muted">{mode === "ask" ? t("askAskHint") : t("askDecideHint")}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="flex flex-col">
+                <SettingToggle
+                  on={ws.planFirst ?? true}
+                  onChange={(v) => updateWs({ planFirst: v })}
+                  title={t("planFirst", { name: agentName("forge", workspaceId) })}
+                  hint={t("planFirstHint")}
+                />
+                <SettingToggle
+                  on={(ws.messageDelivery ?? "now") === "now"}
+                  onChange={(v) => updateWs({ messageDelivery: v ? "now" : "later" })}
+                  title={t("interrupt")}
+                  hint={t("interruptHint")}
+                />
+                <NotifyToggle />
+              </div>
+            </Section>
+
             <Section id="safety" title={t("safety")}>
               <div role="radiogroup" aria-label={t("forgeCommands", { name: agentName("forge", workspaceId) })} className="flex flex-col gap-2.5">
                 <span className="text-[13px] font-medium">{t("forgeCommands", { name: agentName("forge", workspaceId) })}</span>
@@ -440,4 +493,41 @@ export function WorkspaceSettings({ workspaceId }: { workspaceId: string }) {
       </div>
     </WorkspaceScope>
   );
+}
+
+function SettingToggle({ on, onChange, title, hint, disabled }: { on: boolean; onChange: (v: boolean) => void; title: string; hint: string; disabled?: boolean }) {
+  return (
+    <div className="flex items-start gap-3 border-t border-border py-3">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        aria-label={title}
+        disabled={disabled}
+        onClick={() => onChange(!on)}
+        className={cn(
+          "relative mt-0.5 h-[21px] w-9 flex-none rounded-full transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50",
+          on ? "bg-accent" : "bg-border-strong",
+        )}
+      >
+        <span className={cn("absolute top-0.5 size-[17px] rounded-full bg-bg transition-all", on ? "right-0.5" : "left-0.5")} />
+      </button>
+      <div>
+        <div className="text-[13.5px] font-medium">{title}</div>
+        <div className="text-[12.5px] text-muted">{hint}</div>
+      </div>
+    </div>
+  );
+}
+
+/** A browser setting (not per workspace): system notifications when an agent needs you. */
+function NotifyToggle() {
+  const t = useTranslations("wsSettings");
+  const { notify, setNotify } = useAppState();
+  const unsupported = typeof window !== "undefined" && !("Notification" in window);
+  async function change(v: boolean) {
+    if (v && Notification.permission !== "granted" && (await Notification.requestPermission()) !== "granted") return;
+    setNotify(v);
+  }
+  return <SettingToggle on={notify} onChange={(v) => void change(v)} title={t("notify")} hint={unsupported ? t("notifyUnsupported") : t("notifyHint")} disabled={unsupported} />;
 }

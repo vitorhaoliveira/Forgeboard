@@ -8,6 +8,7 @@ import type {
   CheckResult,
   FormAnswer,
   Locale,
+  MessageDelivery,
   FlowNode,
   ForgeCommands,
   NodeState,
@@ -24,12 +25,17 @@ import * as git from "./git.js";
 import {
   forgeAnswerPrompt,
   forgeFixPrompt,
+  forgeMessagesPrompt,
   forgeNotesPrompt,
   forgeStartPrompt,
+  type ForgeStyle,
   hawkPrompt,
+  messagesNote,
+  parseAssumptions,
   parseForm,
   parseQuestion,
   parseVerdict,
+  stripQuestion,
 } from "./prompts.js";
 import { getProvider } from "./providers/index.js";
 import { AbortedError, type AgentActivity } from "./providers/types.js";
@@ -104,7 +110,26 @@ function activityEmitter(taskId: string, actor: Actor) {
 type ForgeMode =
   | { kind: "start" }
   | { kind: "answer"; answer: string; form?: AgentForm; data?: FormAnswer; note?: string; replan?: boolean }
-  | { kind: "fix" } | { kind: "notes"; notes: string };
+  | { kind: "fix" }
+  | { kind: "notes"; notes: string }
+  /** Only your messages: after an interruption, or when they arrive after Hawk approved. */
+  | { kind: "messages" };
+
+/** Messages you sent while the crew worked, waiting for Forge's next step. */
+const inbox = new Map<string, string[]>();
+/** The Forge step running now, so a message can interrupt it. */
+const forgeSteps = new Map<string, AbortController>();
+
+function takeInbox(taskId: string): string[] {
+  const list = inbox.get(taskId) ?? [];
+  inbox.delete(taskId);
+  return list;
+}
+
+function styleFor(workspaceId: string): ForgeStyle {
+  const ws = workspaces.get(workspaceId);
+  return { askMode: ws?.askMode ?? "ask", planFirst: ws?.planFirst ?? true };
+}
 
 /**
  * Turns a form in Forge's message into a question with A2UI messages. Returns null
@@ -132,31 +157,54 @@ async function forgeStep(taskId: string, mode: ForgeMode, signal: AbortSignal): 
   const repoRules = rules.forRepo(repos.get(task.repoId)!);
   const state = taskState.get(taskId);
   const commands: ForgeCommands = workspaces.get(task.workspaceId)?.forgeCommands ?? "standard";
+  const style = styleFor(task.workspaceId);
+  const messages = takeInbox(taskId);
 
-  const prompt =
+  const base =
     mode.kind === "start"
-      ? forgeStartPrompt(agent, task, repoRules, commands)
+      ? forgeStartPrompt(agent, task, repoRules, commands, style)
       : mode.kind === "answer"
-        ? forgeAnswerPrompt(mode.answer, mode.form, mode.data, mode)
+        ? forgeAnswerPrompt(mode.answer, mode.form, mode.data, mode, style)
         : mode.kind === "fix"
-          ? forgeFixPrompt(task)
-          : forgeNotesPrompt(mode.notes);
+          ? forgeFixPrompt(task, style)
+          : mode.kind === "notes"
+            ? forgeNotesPrompt(mode.notes, style)
+            : forgeMessagesPrompt(messages, style);
+  const prompt = mode.kind === "messages" ? base : mode.kind === "start" ? `${base}\n\n${messagesNote(messages)}`.trim() : `${messagesNote(messages)}${base}`;
 
   node(taskId, "forge", "active");
-  const output = await getProvider(agent.provider).run({
-    role: "forge",
-    prompt,
-    cwd: worktree,
-    permissionMode: "acceptEdits",
-    allowedTools: FORGE_ALLOWED_TOOLS[commands],
-    commands,
-    // Keep the same conversation across rounds so Forge remembers its work.
-    resumeSession: mode.kind === "start" ? undefined : state.forgeSession,
-    locale: task.locale,
-    round: task.round,
-    signal,
-    emit: activityEmitter(taskId, "forge"),
-  });
+  // Its own stop handle, so a message can interrupt this step without stopping the task.
+  const step = new AbortController();
+  const stopStep = () => step.abort();
+  signal.addEventListener("abort", stopStep, { once: true });
+  forgeSteps.set(taskId, step);
+  let output;
+  try {
+    output = await getProvider(agent.provider).run({
+      role: "forge",
+      prompt,
+      cwd: worktree,
+      permissionMode: "acceptEdits",
+      allowedTools: FORGE_ALLOWED_TOOLS[commands],
+      commands,
+      // Keep the same conversation across rounds so Forge remembers its work.
+      resumeSession: mode.kind === "start" ? undefined : state.forgeSession,
+      onSession: (id) => taskState.set(taskId, { forgeSession: id }),
+      locale: task.locale,
+      round: task.round,
+      signal: step.signal,
+      emit: activityEmitter(taskId, "forge"),
+    });
+  } catch (err) {
+    // Interrupted by your message: resume the same session with it.
+    if (!signal.aborted && step.signal.aborted && inbox.get(taskId)?.length) {
+      return forgeStep(taskId, { kind: "messages" }, signal);
+    }
+    throw err;
+  } finally {
+    signal.removeEventListener("abort", stopStep);
+    if (forgeSteps.get(taskId) === step) forgeSteps.delete(taskId);
+  }
   taskState.set(taskId, { forgeSession: output.sessionId ?? undefined });
   addCost(taskId, output.costUsd);
 
@@ -170,8 +218,15 @@ async function forgeStep(taskId: string, mode: ForgeMode, signal: AbortSignal): 
     return "question";
   }
 
-  emit(taskId, { type: "step_done", actor: "forge", summary: output.text, costUsd: output.costUsd, durationMs: output.durationMs });
-  tasks.update(taskId, { summary: output.text });
+  const assumptions = parseAssumptions(output.text);
+  const summary = stripQuestion(output.text);
+  if (assumptions.length) {
+    emit(taskId, { type: "assumptions", actor: "forge", items: assumptions });
+    const current = tasks.get(taskId)!;
+    tasks.update(taskId, { assumptions: [...(current.assumptions ?? []), ...assumptions], assumptionsAck: false });
+  }
+  emit(taskId, { type: "step_done", actor: "forge", summary, costUsd: output.costUsd, durationMs: output.durationMs });
+  tasks.update(taskId, { summary });
   node(taskId, "forge", "done");
   return "done";
 }
@@ -244,6 +299,14 @@ async function loop(taskId: string, first: ForgeMode, signal: AbortSignal): Prom
     const checks = await checksStep(taskId, signal);
     const verdict = await hawkStep(taskId, checks, signal);
     const task = tasks.get(taskId)!;
+
+    // Messages that arrived while checks or Hawk ran get one more Forge round, even after approval.
+    if (inbox.get(taskId)?.length) {
+      tasks.update(taskId, { round: task.round + 1, maxRounds: Math.max(task.maxRounds, task.round + 1) });
+      emit(taskId, { type: "round", actor: "system", round: task.round + 1 });
+      mode = verdict.approved ? { kind: "messages" } : { kind: "fix" };
+      continue;
+    }
 
     if (verdict.approved || task.round >= task.maxRounds) {
       node(taskId, "you", "active");
@@ -323,12 +386,13 @@ export function answerQuestion(
   if (!task || task.status !== "waiting" || !task.question) throw new FlowError("This task isn't waiting for an answer.");
   const form = task.question.form;
   const replan = Boolean(form && extra.replan);
-  const data = form && !replan ? sanitizeAnswer(form, rawData) : undefined;
+  // A reply typed in the conversation (no form data) goes to Forge as free text.
+  const data = form && !replan && rawData !== undefined ? sanitizeAnswer(form, rawData) : undefined;
 
   emit(taskId, { type: "answer", actor: "you", text: answer, remember, ...(data ? { data } : {}), ...(extra.note ? { note: extra.note } : {}), ...(replan ? { replan } : {}) });
   if (remember && !replan) {
     // A form becomes one rule per decision; plans are specific to this task, so they're never remembered.
-    const texts = form
+    const texts = form && data
       ? form.fields
           .filter((f) => f.type !== "steps")
           .map((f) => {
@@ -353,7 +417,36 @@ export function answerQuestion(
   }
   node(taskId, "you", "done");
   setStatus(taskId, "running", { question: null });
-  drive(taskId, (signal) => loop(taskId, { kind: "answer", answer, form, data, note: extra.note, replan }, signal));
+  drive(taskId, (signal) => loop(taskId, { kind: "answer", answer, form: data || replan ? form : undefined, data, note: extra.note, replan }, signal));
+}
+
+/**
+ * A message from you, whatever the task is doing:
+ * - waiting for an answer: it is the answer;
+ * - waiting for review: it sends the work back with it as notes;
+ * - running: it reaches Forge now (interrupting its step) or at its next step.
+ */
+export function sendMessage(taskId: string, text: string, delivery: MessageDelivery): void {
+  const task = tasks.get(taskId);
+  if (!task) throw new FlowError("Task not found.");
+  if (task.status === "waiting") return answerQuestion(taskId, text, false);
+  if (task.status === "review") return sendBack(taskId, text);
+  if (task.status !== "running") throw new FlowError("This task has finished. Start a new one to keep going.");
+
+  // "Now" only interrupts while Forge is working; during checks or review it waits for Forge's next step.
+  const step = forgeSteps.get(taskId);
+  const interrupts = delivery === "now" && step !== undefined && !step.signal.aborted;
+  emit(taskId, { type: "message", actor: "you", text, delivery: interrupts ? "now" : "later" });
+  inbox.set(taskId, [...(inbox.get(taskId) ?? []), text]);
+  if (interrupts) {
+    emit(taskId, { type: "steer", actor: "system" });
+    step.abort();
+  }
+}
+
+export function ackAssumptions(taskId: string): Task {
+  if (!tasks.get(taskId)) throw new FlowError("Task not found.");
+  return tasks.update(taskId, { assumptionsAck: true });
 }
 
 export function sendBack(taskId: string, notes: string): void {

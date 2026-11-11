@@ -8,7 +8,7 @@ import { isActive, isFinished, needsYou } from "@forgeboard/shared";
 import { api } from "@/lib/api";
 import { useAppState, WorkspaceScope } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
-import { QuestionCard, RecentRow, ReviewCard } from "./desk-cards";
+import { AssumptionsCard, QuestionCard, RecentRow, ReviewCard, toCheck } from "./desk-cards";
 import { Glyph } from "./glyph";
 import { Composer, RunningStats } from "./top-bar";
 import { Button, buttonClass, Card, Chip, SectionLabel } from "./ui";
@@ -153,6 +153,17 @@ export function WorkspaceDesk({ workspaceId, repoFilter }: { workspaceId: string
               {waiting.length === 0 && <Card className="border-dashed p-6 text-[13.5px] text-muted">{t("nothingWaiting")}</Card>}
               {waiting.map((task) =>
                 task.status === "waiting" ? <QuestionCard key={task.id} task={task} showRepo={repos.length > 1} /> : <ReviewCard key={task.id} task={task} showRepo={repos.length > 1} />,
+              )}
+
+              {toCheck(tasks).length > 0 && (
+                <>
+                  <SectionLabel className="mt-2.5">
+                    {t("toCheck").toUpperCase()} · {toCheck(tasks).length}
+                  </SectionLabel>
+                  {toCheck(tasks).map((task) => (
+                    <AssumptionsCard key={task.id} task={task} showRepo={repos.length > 1} />
+                  ))}
+                </>
               )}
 
               <SectionLabel className="mt-2.5">

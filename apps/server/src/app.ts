@@ -25,11 +25,13 @@ import { config } from "./config.js";
 import { agents, events, repos, rules, tasks, workspaces } from "./db.js";
 import { GitError, repoRoot } from "./git.js";
 import {
+  ackAssumptions,
   answerQuestion,
   discardTask,
   FlowError,
   mergeTask,
   sendBack,
+  sendMessage,
   startTask,
   stopTask,
   taskDiff,
@@ -184,6 +186,9 @@ app.patch("/api/workspaces/:id", async (c) => {
       color: colorSchema.optional(),
       crewMode: z.enum(["default", "custom"]).optional(),
       forgeCommands: z.enum(["standard", "restricted"]).optional(),
+      askMode: z.enum(["ask", "decide"]).optional(),
+      planFirst: z.boolean().optional(),
+      messageDelivery: z.enum(["now", "later"]).optional(),
       archived: z.boolean().optional(),
     }),
   );
@@ -421,6 +426,21 @@ app.post("/api/tasks/:id/answer", async (c) => {
   );
   answerQuestion(task.id, text, remember, data, { note: note || undefined, replan });
   return c.json(tasks.get(task.id));
+});
+
+app.post("/api/tasks/:id/message", async (c) => {
+  const task = mustGetTask(c.req.param("id"));
+  const { text, delivery } = await body(
+    c,
+    z.object({ text: z.string().trim().min(1).max(5_000), delivery: z.enum(["now", "later"]).default("now") }),
+  );
+  sendMessage(task.id, text, delivery);
+  return c.json(tasks.get(task.id));
+});
+
+app.post("/api/tasks/:id/assumptions/ack", (c) => {
+  const task = mustGetTask(c.req.param("id"));
+  return c.json(ackAssumptions(task.id));
 });
 
 app.post("/api/tasks/:id/send-back", async (c) => {

@@ -6,7 +6,7 @@ import { Layers, Plus } from "lucide-react";
 import { isActive, needsYou, type Task } from "@forgeboard/shared";
 import { useAppState } from "@/lib/app-state";
 import { formatCost } from "@/lib/utils";
-import { QuestionCard, ReviewCard } from "./desk-cards";
+import { AssumptionsCard, QuestionCard, ReviewCard, toCheck } from "./desk-cards";
 import { StatusDot } from "./status-chip";
 import { Composer, RunningStats } from "./top-bar";
 import { Button, Card, SectionLabel } from "./ui";
@@ -112,6 +112,14 @@ export function Desk() {
                   </div>
                 );
               })}
+              {toCheck(tasks).length > 0 && (
+                <>
+                  <SectionLabel className="mt-2.5">{t("toCheck").toUpperCase()}</SectionLabel>
+                  {toCheck(tasks).map((task) => (
+                    <AssumptionsCard key={task.id} task={task} showRepo />
+                  ))}
+                </>
+              )}
             </section>
 
             <aside aria-label={t("atWork")} className="flex max-w-[420px] grow basis-[340px] flex-col gap-3">
