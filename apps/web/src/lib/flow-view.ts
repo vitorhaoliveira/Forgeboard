@@ -11,8 +11,8 @@ export type RoleOf = (agentId: AgentId) => AgentRole | undefined;
  * The role of an agent in a crew. An agent deleted since keeps a sensible role in old runs:
  * Hawk reviews, anyone else builds.
  */
-export function roleOfIn(crew: Agent[] | undefined): (agentId: AgentId) => AgentRole {
-  return (id) => crew?.find((a) => a.id === id)?.role ?? (id === "hawk" ? "reviewer" : "builder");
+export function roleOfIn(crew: Agent[] | undefined, fallback?: Agent[]): (agentId: AgentId) => AgentRole {
+  return (id) => (crew?.find((a) => a.id === id) ?? fallback?.find((a) => a.id === id))?.role ?? (id === "hawk" ? "reviewer" : "builder");
 }
 
 /** The actor a step's graph node stands for: its agent, or the checks. Pauses have none. */

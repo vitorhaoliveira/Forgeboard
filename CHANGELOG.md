@@ -2,6 +2,17 @@
 
 All notable changes to Forgeboard are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.1] — 2026-11-11
+
+Flow fixes: own crews, repeated agents, loop labels.
+
+### Fixed
+
+- **Flows run in workspaces with their own crew.** A workspace with its own crew uses its copy of each agent; agents it doesn't have come from the default crew. Before, a flow with an agent created after the workspace got its own crew (e.g. Scribe) was refused when you started a task.
+- **The same agent twice in a flow.** Hand-backs now name the steps they come from and go to, so with Hawk reviewing twice, the right loop lights up and the right steps reset.
+- **Loop labels show the current round only.** "2 issues → Forge" no longer stays on the graph after a later round that started from your note, a pause or a message.
+- Texts that named Forge now name the agent they mean: where your review note goes ("sends the work back to Scribe"), the send-back placeholder, and "reaches the builder at its next step". The safety note talks about agents that build and review.
+
 ## [2.0.0] — 2026-11-11
 
 Flow studio: your own flows and your own agents.

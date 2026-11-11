@@ -361,7 +361,8 @@ export type RunEventPayload =
   | WithActor<{ type: "verdict"; verdict: Verdict; round: number }>
   | WithActor<{ type: "question"; question: AgentQuestion }>
   | WithActor<{ type: "answer"; text: string; remember: boolean; data?: FormAnswer; note?: string; replan?: boolean }>
-  | WithActor<{ type: "handoff"; to: Actor; label: string }>
+  /** Work passing on. A reviewer's hand-back also names the steps (missing before v2.0.1). */
+  | WithActor<{ type: "handoff"; to: Actor; label: string; fromStep?: string; toStep?: string }>
   | WithActor<{ type: "step_done"; summary: string; costUsd: number | null; durationMs: number | null }>
   | WithActor<{ type: "merged"; branch: string }>
   /** A message you sent while the crew worked. */

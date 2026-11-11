@@ -8,7 +8,7 @@ export function useTaskAgents(task: Pick<Task, "flow" | "workspaceId">) {
   const { crews } = useAppState();
   return useMemo(() => {
     const flow = flowOf(task);
-    const roleOf = roleOfIn(crews[task.workspaceId] ?? crews.default);
+    const roleOf = roleOfIn(crews[task.workspaceId], crews.default);
     return {
       flow,
       roleOf,

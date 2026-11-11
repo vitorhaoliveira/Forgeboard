@@ -10,7 +10,7 @@ import type { DiffFile } from "@forgeboard/shared";
 import { api } from "@/lib/api";
 import { useAppState, WorkspaceScope } from "@/lib/app-state";
 import { cleanAgentText } from "@/lib/run-model";
-import { flowOf, lastReviewer, roleOfIn } from "@/lib/flow-view";
+import { flowOf, lastBuilder, lastReviewer, roleOfIn } from "@/lib/flow-view";
 import { useTaskStream } from "@/lib/use-task-stream";
 import { useFlowName } from "./flow-graph";
 import { cn, formatCost } from "@/lib/utils";
@@ -114,7 +114,10 @@ export function DecideView({ taskId }: { taskId: string }) {
   }
 
   const v = task.verdict;
-  const reviewer = v?.by ?? lastReviewer(flowOf(task), roleOfIn(crews[task.workspaceId] ?? crews.default));
+  const roleOf = roleOfIn(crews[task.workspaceId], crews.default);
+  const reviewer = v?.by ?? lastReviewer(flowOf(task), roleOf);
+  // Your notes go to the flow's last builder.
+  const notesTo = lastBuilder(flowOf(task), roleOf);
   const checks = task.checks ?? [];
   const includedCount = (files ?? []).filter((f) => !excluded.has(f.path)).length;
   const branch = task.baseBranch ?? "main";
@@ -267,7 +270,7 @@ export function DecideView({ taskId }: { taskId: string }) {
           {notesOpen && (
             <div className="flex flex-col gap-2">
               <label htmlFor="notes" className="sr-only">
-                {t("sendBackPlaceholder")}
+                {t("sendBackPlaceholder", { name: name(notesTo) })}
               </label>
               <textarea
                 id="notes"
@@ -275,7 +278,7 @@ export function DecideView({ taskId }: { taskId: string }) {
                 rows={3}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder={t("sendBackPlaceholder")}
+                placeholder={t("sendBackPlaceholder", { name: name(notesTo) })}
                 className="w-full resize-y rounded-xl border border-border bg-panel px-3.5 py-3 outline-none focus:border-border-strong"
               />
             </div>

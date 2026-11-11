@@ -13,30 +13,49 @@ export function idleStates(flow: Flow): NodeStates {
 /** Latest state of each graph node, replayed from the event log. */
 export function nodeStates(events: RunEvent[], flow: Flow, roleOf: RoleOf): NodeStates {
   const states = idleStates(flow);
-  let handBackFrom: AgentId | null = null;
+  let handBack: { from: AgentId; fromStep?: string } | null = null;
   for (const e of events) {
     if (e.type === "node") states[e.node] = e.state;
-    if (e.type === "handoff" && e.to !== "checks") handBackFrom = e.actor;
+    if (e.type === "handoff" && e.to !== "checks") handBack = { from: e.actor, fromStep: e.fromStep };
     // A new round resets the loop it starts, so the graph shows the current pass.
     if (e.type === "round" && e.round > 1) {
-      const reviewer = handBackFrom ? flow.steps.findIndex((s) => s.type === "agent" && s.agentId === handBackFrom) : -1;
+      const reviewer = handBack ? stepIndexOf(flow, handBack) : -1;
       let from = reviewer === -1 ? -1 : sendBackIndex(flow, reviewer, roleOf);
       if (from === -1) {
         // Your notes or messages: they go to the last builder.
         from = flow.steps.map((s, i) => [s, i] as const).reverse().find(([s]) => s.type === "agent" && roleOf(s.agentId) === "builder")?.[1] ?? 0;
       }
       flow.steps.slice(from).forEach((s) => (states[s.id] = "idle"));
-      handBackFrom = null;
+      handBack = null;
     }
   }
   return states;
 }
 
-/** The last hand-back from a reviewer to a builder: who sent it and how many issues. */
-export function lastHandBack(events: RunEvent[]): { from: AgentId; count: number } | null {
+/** The reviewer step of a hand-back: by step id, or (events before v2.0.1) the first step of that agent. */
+function stepIndexOf(flow: Flow, handBack: { from: AgentId; fromStep?: string }): number {
+  if (handBack.fromStep) return flow.steps.findIndex((s) => s.id === handBack.fromStep);
+  return flow.steps.findIndex((s) => s.type === "agent" && s.agentId === handBack.from);
+}
+
+export interface HandBack {
+  from: AgentId;
+  /** Missing on events from before v2.0.1. */
+  fromStep?: string;
+  count: number;
+}
+
+/**
+ * The hand-back that started the current round: who sent it and how many issues. Null when the
+ * current round started some other way (your notes, a pause, messages after approval).
+ */
+export function lastHandBack(events: RunEvent[]): HandBack | null {
+  let rounds = 0;
   for (let i = events.length - 1; i >= 0; i--) {
     const e = events[i]!;
-    if (e.type === "handoff" && e.to !== "checks") return { from: e.actor, count: Number(e.label) || 0 };
+    if (e.type === "round") rounds++;
+    // A hand-back is followed by its own round event; a second one after it means it's old news.
+    if (e.type === "handoff" && e.to !== "checks") return rounds <= 1 ? { from: e.actor, fromStep: e.fromStep, count: Number(e.label) || 0 } : null;
   }
   return null;
 }

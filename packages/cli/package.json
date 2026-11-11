@@ -1,6 +1,6 @@
 {
   "name": "forgeboard",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "A local cockpit for AI coding agents: a crew that builds, checks and reviews in isolated git worktrees, and waits for your merge.",
   "license": "MIT",
   "type": "module",

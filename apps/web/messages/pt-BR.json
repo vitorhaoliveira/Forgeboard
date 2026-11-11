@@ -162,7 +162,7 @@
     "replaying": "Reproduzindo…",
     "sentBack": "Devolvido com observação",
     "deliveredNow": "Entregue agora · interrompeu a etapa",
-    "deliveredLater": "Chega ao Forge na próxima etapa dele",
+    "deliveredLater": "Chega ao construtor na próxima etapa dele",
     "steered": "O {name} parou e retomou a mesma sessão com a sua mensagem",
     "decidedForYou": "Decidi por você",
     "decidedHint": "Responda aqui se quiser mudar algo.",
@@ -189,7 +189,7 @@
     "discard": "Descartar",
     "discardConfirm": "Descartar todas as mudanças desta tarefa? Não dá para desfazer.",
     "sendBack": "Devolver com observações",
-    "sendBackPlaceholder": "O que o Forge deve mudar?",
+    "sendBackPlaceholder": "O que o {name} deve mudar?",
     "merge": "{count, plural, =0 {Nada para fazer merge} one {Fazer merge de # arquivo na {branch}} other {Fazer merge de # arquivos na {branch}}}",
     "merging": "Fazendo merge…",
     "notReady": "Esta tarefa está: {status}.",
@@ -301,7 +301,7 @@
     "addChecks": "Verificações",
     "addAsk": "Me pergunte",
     "endsWithYou": "Todo fluxo termina com você: revisar a mudança e fazer o merge, devolver ou descartar.",
-    "crewNote": "Usa a equipe padrão. Um workspace com equipe própria precisa dos mesmos agentes para rodar este fluxo.",
+    "crewNote": "Usa a equipe padrão. Um workspace com equipe própria usa a cópia dele de cada agente; os agentes que ele não tem vêm da equipe padrão.",
     "create": "Criar fluxo",
     "newFlow": "Novo fluxo",
     "copyOf": "{name} (cópia)",
@@ -414,7 +414,7 @@
     "cmdStandardHint": "Edita arquivos e roda npm, pnpm, yarn, bun, npx e node para instalar e testar. Na prática, isso permite executar qualquer código na sua máquina: use em repositórios em que você confia.",
     "cmdRestricted": "Restrito",
     "cmdRestrictedHint": "Só edita arquivos e usa git e ls para leitura. Não roda comandos: o Forgeboard roda as verificações depois e devolve as falhas.",
-    "safetyNote": "O Hawk nunca altera arquivos nem roda comandos, em nenhum dos modos. Com o Codex, o sandbox dele também impede o Forge de escrever fora da pasta da tarefa; no Restrito, ele fica sem internet (os comandos ainda rodam, isolados).",
+    "safetyNote": "Os agentes que revisam nunca alteram arquivos nem rodam comandos, em nenhum dos modos. Com o Codex, o sandbox também impede os agentes que constroem de escrever fora da pasta da tarefa; no Restrito, eles ficam sem internet (os comandos ainda rodam, isolados).",
     "conversation": "Conversa e dúvidas",
     "askTitle": "Quando o agente tiver uma dúvida",
     "askHint": "Vale para todas as tarefas deste workspace.",
@@ -449,6 +449,6 @@
     "later": "Na próxima pausa",
     "enterHint": "Enter envia · Shift+Enter quebra linha",
     "send": "Enviar",
-    "reviewHint": "Sua mensagem devolve o trabalho ao Forge como observação, para outra rodada."
+    "reviewHint": "Sua mensagem devolve o trabalho ao {name} como observação, para outra rodada."
   }
 }

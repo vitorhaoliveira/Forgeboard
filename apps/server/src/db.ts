@@ -404,6 +404,19 @@ export const agents = {
     if (!agent) throw new Error(`The agent "${id}" isn't in this crew anymore.`);
     return agent;
   },
+  /**
+   * The agent a flow step runs in a workspace: its own crew's copy, or the default crew's when
+   * the workspace's own crew doesn't have it (an agent created after the workspace got its own crew).
+   */
+  forFlow(workspaceId: string | undefined, id: AgentId): Agent | undefined {
+    return agents.forWorkspace(workspaceId).find((a) => a.id === id) ?? agents.defaults().find((a) => a.id === id);
+  },
+  /** Like forFlow, but throws when neither crew has the agent (it was deleted). */
+  forStep(workspaceId: string | undefined, id: AgentId): Agent {
+    const agent = agents.forFlow(workspaceId, id);
+    if (!agent) throw new Error(`The agent "${id}" isn't in this crew anymore.`);
+    return agent;
+  },
   removeForWorkspace(workspaceId: string, id: AgentId): void {
     db.prepare("DELETE FROM workspace_agents WHERE workspace_id = ? AND agent_id = ?").run(workspaceId, id);
   },
