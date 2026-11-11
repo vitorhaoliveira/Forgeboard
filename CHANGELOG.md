@@ -2,6 +2,13 @@
 
 All notable changes to Forgeboard are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **Choose a repository from your folders.** "Choose folder…" (new workspace, workspace settings, and an empty workspace's desk) opens a folder browser: home, up, a clickable path, and git repositories marked, with the ones already added flagged. Typing the path still works.
+- API: `GET /api/folders?path=` lists a folder's subfolders (your home by default; names only, hidden folders left out).
+
 ## [2.0.1] — 2026-11-11
 
 Flow fixes: own crews, repeated agents, loop labels.

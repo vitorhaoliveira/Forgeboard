@@ -450,5 +450,22 @@
     "enterHint": "Enter envia · Shift+Enter quebra linha",
     "send": "Enviar",
     "reviewHint": "Sua mensagem devolve o trabalho ao {name} como observação, para outra rodada."
+  },
+  "folders": {
+    "choose": "Escolher pasta…",
+    "title": "Escolha um repositório",
+    "home": "Início",
+    "up": "Subir uma pasta",
+    "location": "Local",
+    "folders": "Pastas",
+    "empty": "Nenhuma pasta aqui.",
+    "repo": "repositório git",
+    "added": "já adicionado",
+    "pick": "Escolher",
+    "hereRepo": "Esta pasta é um repositório git.",
+    "hereAdded": "Este repositório já pertence a um workspace.",
+    "reposHere": "{count, plural, one {# repositório aqui: passe o mouse para escolher, ou abra.} other {# repositórios aqui: passe o mouse em um para escolher, ou abra.}}",
+    "notRepo": "Abra a pasta de um repositório git para escolher.",
+    "pickThis": "Escolher esta pasta"
   }
 }

@@ -450,5 +450,22 @@
     "enterHint": "Enter sends · Shift+Enter new line",
     "send": "Send",
     "reviewHint": "Your message sends the work back to {name} as a note, for another round."
+  },
+  "folders": {
+    "choose": "Choose folder…",
+    "title": "Choose a repository",
+    "home": "Home",
+    "up": "Up one folder",
+    "location": "Location",
+    "folders": "Folders",
+    "empty": "No folders here.",
+    "repo": "git repository",
+    "added": "already added",
+    "pick": "Choose",
+    "hereRepo": "This folder is a git repository.",
+    "hereAdded": "This repository already belongs to a workspace.",
+    "reposHere": "{count, plural, one {# repository here: hover it to choose, or open it.} other {# repositories here: hover one to choose, or open it.}}",
+    "notRepo": "Open the folder of a git repository to choose it.",
+    "pickThis": "Choose this folder"
   }
 }

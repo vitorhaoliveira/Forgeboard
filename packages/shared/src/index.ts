@@ -399,6 +399,27 @@ export interface CreateTaskInput {
 /** A flow you make: everything but the id and the built-in flag. */
 export type FlowInput = Pick<Flow, "name" | "description" | "steps">;
 
+/** One folder in the folder picker. */
+export interface FolderEntry {
+  name: string;
+  path: string;
+  /** Has a .git inside: it can be added as a repository. */
+  isRepo: boolean;
+  /** Already belongs to a workspace. */
+  added: boolean;
+}
+
+/** A folder's subfolders, for picking a repository without typing its path. */
+export interface FolderListing {
+  path: string;
+  /** Null at the filesystem root. */
+  parent: string | null;
+  home: string;
+  isRepo: boolean;
+  added: boolean;
+  entries: FolderEntry[];
+}
+
 export interface DiffFile {
   path: string;
   status: "added" | "modified" | "deleted" | "renamed";

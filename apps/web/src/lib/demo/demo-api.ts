@@ -12,6 +12,7 @@ import type {
   CreateWorkspaceInput,
   DiffFile,
   Flow,
+  FolderListing,
   HouseRule,
   Locale,
   ProviderInfo,
@@ -550,6 +551,36 @@ export const demoApi: Api = {
     return ok(undefined);
   },
 
+  // The demo has no real folders: a small made-up tree.
+  folders: (path) => {
+    const home = "/Users/demo";
+    const dev = `${home}/dev`;
+    const at = path ?? home;
+    const listing: FolderListing =
+      at === dev
+        ? {
+            path: dev,
+            parent: home,
+            home,
+            isRepo: false,
+            added: false,
+            entries: ["acme-web", "acme-api", "loja-ana", "blog", "side-project"].map((name) => ({
+              name,
+              path: `${dev}/${name}`,
+              isRepo: true,
+              added: s().repos.some((r) => r.name === name),
+            })),
+          }
+        : {
+            path: home,
+            parent: "/Users",
+            home,
+            isRepo: false,
+            added: false,
+            entries: ["Desktop", "dev", "Documents", "Downloads"].map((name) => ({ name, path: `${home}/${name}`, isRepo: false, added: false })),
+          };
+    return ok(listing);
+  },
   flows: () => ok([BUILD_AND_REVIEW, ...s().flows]),
   createFlow: (input) => {
     const flow: Flow = { id: id(), ...input };

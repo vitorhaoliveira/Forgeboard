@@ -8,6 +8,7 @@ import { WORKSPACE_COLORS, type WorkspaceColor } from "@forgeboard/shared";
 import { api } from "@/lib/api";
 import { useAppState } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
+import { ChooseFolderButton } from "./folder-picker";
 import { Button, SectionLabel } from "./ui";
 import { WorkspaceTile, WS_BG } from "./workspace-ui";
 
@@ -93,7 +94,7 @@ export function NewWorkspaceDialog() {
   return (
     <dialog
       ref={dialogRef}
-      onClose={() => setNewWorkspaceOpen(false)}
+      onClose={(e) => e.target === e.currentTarget && setNewWorkspaceOpen(false)}
       aria-labelledby="new-ws-title"
       className="m-auto w-[min(640px,calc(100vw-32px))] rounded-[18px] border border-border-strong bg-panel p-0 text-text shadow-[0_30px_80px_rgba(0,0,0,.6)] backdrop:bg-black/60"
     >
@@ -140,7 +141,8 @@ export function NewWorkspaceDialog() {
 
           <div className="flex flex-col gap-2">
             <SectionLabel>{t("repos")}</SectionLabel>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <ChooseFolderButton onPick={(p) => !paths.includes(p) && setPaths((cur) => [...cur, p])} className="h-[38px]" />
               <label htmlFor="new-ws-path" className="sr-only">
                 {t("repoPlaceholder")}
               </label>
