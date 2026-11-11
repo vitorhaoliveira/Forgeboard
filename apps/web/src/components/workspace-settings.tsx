@@ -11,6 +11,7 @@ import { useAppState, WorkspaceScope } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
 import { AgentCard, NewAgentCard } from "./crew-view";
 import { useFlowName } from "./flow-graph";
+import { Glyph } from "./glyph";
 import { ChooseFolderButton } from "./folder-picker";
 import { ColorPicker } from "./new-workspace-dialog";
 import { RulesEditor, type RuleTarget } from "./rules-editor";
@@ -166,7 +167,7 @@ export function WorkspaceSettings({ workspaceId }: { workspaceId: string }) {
   const tw = useTranslations("ws");
   const tc = useTranslations("common");
   const router = useRouter();
-  const { workspace, repos: allRepos, crews, loaded, agentName, refreshWorkspaces, refreshRepos, refreshCrews, flows } = useAppState();
+  const { workspace, repos: allRepos, crews, loaded, agentName, refreshWorkspaces, refreshRepos, refreshCrews, flows, teams } = useAppState();
   const flowName = useFlowName();
   const ws = workspace(workspaceId);
   const repos = allRepos.filter((r) => r.workspaceId === workspaceId);
@@ -187,6 +188,10 @@ export function WorkspaceSettings({ workspaceId }: { workspaceId: string }) {
   }, [ws?.id, ws?.name, ws?.description, ws?.color]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!ws) return loaded ? <p className="p-8 text-muted">{tw("notFound")}</p> : null;
+
+  // The flow new tasks run: the workspace's own pick, its team's, or Build & Review.
+  const wsTeam = ws.crewMode === "team" ? teams.find((x) => x.id === ws.teamId) : undefined;
+  const effectiveFlow = [ws.defaultFlowId, wsTeam?.planning].find((id) => id && flows.some((f) => f.id === id)) ?? BUILD_AND_REVIEW_ID;
   const generalDirty = name.trim() !== ws.name || description.trim() !== ws.description || color !== ws.color;
 
   async function act(fn: () => Promise<unknown>) {
@@ -235,9 +240,9 @@ export function WorkspaceSettings({ workspaceId }: { workspaceId: string }) {
     });
   }
 
-  async function setCrewMode(mode: "default" | "custom") {
+  async function setCrewMode(mode: "default" | "custom" | "team", teamId?: string) {
     await act(async () => {
-      await api.updateWorkspace(workspaceId, { crewMode: mode });
+      await api.updateWorkspace(workspaceId, { crewMode: mode, ...(teamId ? { teamId } : {}) });
       await Promise.all([refreshWorkspaces(), refreshCrews()]);
     });
   }
@@ -327,27 +332,65 @@ export function WorkspaceSettings({ workspaceId }: { workspaceId: string }) {
             </Section>
 
             <Section id="crew" title={t("crew")}>
-              <div role="radiogroup" aria-label={t("crew")} className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                {(["default", "custom"] as const).map((mode) => {
+              <div role="radiogroup" aria-label={t("crew")} className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                {(["default", "team", "custom"] as const).map((mode) => {
                   const on = ws.crewMode === mode;
+                  const disabled = mode === "team" && teams.length === 0;
                   return (
                     <button
                       key={mode}
                       type="button"
                       role="radio"
                       aria-checked={on}
-                      onClick={() => !on && setCrewMode(mode)}
-                      className={cn("flex flex-col gap-1 rounded-[10px] border px-3.5 py-3 text-left", on ? "border-border-strong bg-panel-2" : "border-border hover:border-border-strong")}
+                      disabled={disabled}
+                      onClick={() => !on && setCrewMode(mode, mode === "team" ? (ws.teamId && teams.some((x) => x.id === ws.teamId) ? ws.teamId : teams[0]?.id) : undefined)}
+                      className={cn(
+                        "flex flex-col gap-1 rounded-[10px] border px-3.5 py-3 text-left disabled:cursor-not-allowed disabled:opacity-50",
+                        on ? "border-border-strong bg-panel-2" : "border-border hover:border-border-strong",
+                      )}
                     >
                       <span className="flex items-center gap-2 font-medium">
-                        {mode === "default" ? t("crewDefault") : t("crewCustom", { name: ws.name })}
+                        {mode === "default" ? t("crewDefault") : mode === "team" ? t("crewTeam") : t("crewCustom", { name: ws.name })}
                         {on && <Check className="ml-auto size-3.5" aria-hidden="true" />}
                       </span>
-                      <span className="text-[12.5px] text-muted">{mode === "default" ? t("crewDefaultHint") : t("crewCustomHint")}</span>
+                      <span className="text-[12.5px] text-muted">
+                        {mode === "default" ? t("crewDefaultHint") : mode === "team" ? (disabled ? t("crewTeamNone") : t("crewTeamHint")) : t("crewCustomHint")}
+                      </span>
                     </button>
                   );
                 })}
               </div>
+              {ws.crewMode === "team" && (
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <select
+                    aria-label={t("crewTeam")}
+                    value={ws.teamId ?? ""}
+                    onChange={(e) => setCrewMode("team", e.target.value)}
+                    className="h-[34px] rounded-lg border border-border bg-panel-2 px-2.5 text-[13px] outline-none"
+                  >
+                    {teams.map((x) => (
+                      <option key={x.id} value={x.id}>
+                        {x.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Link href={`/crew?team=${ws.teamId ?? ""}`} className="text-[13px] text-muted hover:text-text">
+                    {t("editTeam")} →
+                  </Link>
+                  <span className="flex flex-wrap gap-1">
+                    {(crews[workspaceId] ?? []).map((a) => (
+                      <Glyph key={a.id} actor={a.id} size={22} />
+                    ))}
+                  </span>
+                </div>
+              )}
+              {ws.crewMode === "team" || teams.length > 0 ? null : (
+                <p className="text-[12.5px] text-muted">
+                  <Link href="/crew" className="hover:text-text">
+                    {t("crewTeamCreate")} →
+                  </Link>
+                </p>
+              )}
               {ws.crewMode === "custom" && (
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3.5">
                   {(crews[workspaceId] ?? []).map((a) => (
@@ -362,7 +405,7 @@ export function WorkspaceSettings({ workspaceId }: { workspaceId: string }) {
               <label className="flex flex-col gap-1.5">
                 <span className="text-[12.5px] text-muted">{t("flowHint")}</span>
                 <select
-                  value={ws.defaultFlowId && flows.some((f) => f.id === ws.defaultFlowId) ? ws.defaultFlowId : BUILD_AND_REVIEW_ID}
+                  value={effectiveFlow}
                   onChange={(e) => updateWs({ defaultFlowId: e.target.value })}
                   className="h-[34px] max-w-sm rounded-lg border border-border bg-panel-2 px-2.5 text-[13px] outline-none"
                 >

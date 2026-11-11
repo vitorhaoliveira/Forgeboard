@@ -1,6 +1,6 @@
 # v3 — Teams: a Lead, ready-made teams, any kind of work
 
-Status: Phase A of the Lead shipped in v2.2.0. Teams (v2.3) and any kind of work (v2.4) are next.
+Status: the Lead (Phase A) shipped in v2.2.0, teams and code templates in v2.3.0. Any kind of work (v2.4) is next.
 
 ## The idea in three lines
 

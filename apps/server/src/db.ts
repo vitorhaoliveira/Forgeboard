@@ -7,6 +7,7 @@ import type {
   Agent,
   AgentId,
   Flow,
+  Team,
   HouseRule,
   Repo,
   RuleScope,
@@ -107,6 +108,14 @@ const MIGRATIONS: (() => void)[] = [
   // 2 (v2.0): flows you make. Built-in flows live in code.
   () => {
     db.exec(`CREATE TABLE IF NOT EXISTS flows (
+      id TEXT PRIMARY KEY,
+      data TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`);
+  },
+  // 3 (v2.3): teams you make (templates live in code). Members are stored inside the team.
+  () => {
+    db.exec(`CREATE TABLE IF NOT EXISTS teams (
       id TEXT PRIMARY KEY,
       data TEXT NOT NULL,
       created_at TEXT NOT NULL
@@ -383,10 +392,20 @@ export const agents = {
       JSON.stringify(data),
     );
   },
+  /** A team's members. Forge, Hawk and Lead keep their role; in a team any member can be removed. */
+  forTeam(teamId: string): Agent[] | undefined {
+    const team = teams.get(teamId);
+    if (!team) return undefined;
+    return team.members.map((m) => {
+      const builtIn = DEFAULT_AGENTS.find((d) => d.id === m.id);
+      return { ...m, role: builtIn?.role ?? m.role, builtIn: false, customized: false };
+    });
+  },
   /** The crew a workspace actually uses. */
   forWorkspace(workspaceId: string | undefined): Agent[] {
     const defaults = agents.defaults();
     const ws = workspaceId ? workspaces.get(workspaceId) : undefined;
+    if (ws?.crewMode === "team" && ws.teamId) return agents.forTeam(ws.teamId) ?? defaults;
     if (!ws || ws.crewMode !== "custom") return defaults;
     const overrides = new Map(
       db
@@ -469,6 +488,30 @@ export const flows = {
   /** Flows you made that use an agent, so it isn't deleted from under them. */
   usingAgent(agentId: AgentId): Flow[] {
     return flows.list().filter((f) => !f.builtIn && f.steps.some((s) => s.type === "agent" && s.agentId === agentId));
+  },
+};
+
+// ---------- Teams ----------
+
+export const teams = {
+  list(): Team[] {
+    return db
+      .prepare("SELECT data FROM teams ORDER BY created_at")
+      .all()
+      .map((r) => JSON.parse(String(r.data)) as Team);
+  },
+  get(id: string): Team | undefined {
+    const r = db.prepare("SELECT data FROM teams WHERE id = ?").get(id);
+    return r ? (JSON.parse(String(r.data)) as Team) : undefined;
+  },
+  save(team: Team): void {
+    const members = team.members.map(({ customized: _c, builtIn: _b, ...m }) => m);
+    db.prepare(
+      "INSERT INTO teams (id, data, created_at) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+    ).run(team.id, JSON.stringify({ ...team, members }), team.createdAt);
+  },
+  remove(id: string): void {
+    db.prepare("DELETE FROM teams WHERE id = ?").run(id);
   },
 };
 

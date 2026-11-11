@@ -3,6 +3,7 @@ import {
   type Agent,
   type CheckCommand,
   type CreateAgentInput,
+  type CreateTeamInput,
   type CreateTaskInput,
   type CreateWorkspaceInput,
   type DiffFile,
@@ -18,6 +19,7 @@ import {
   type RuleSource,
   type RunEvent,
   type Task,
+  type Team,
   type Workspace,
 } from "@forgeboard/shared";
 import { demoApi } from "./demo/demo-api";
@@ -90,6 +92,15 @@ const realApi = {
   createAgent: (input: CreateAgentInput, workspaceId?: string) => request<Agent>(`/api/agents${wsQuery(workspaceId)}`, post(input)),
   /** Deletes an agent you created (built-in agents can only be reset). */
   removeAgent: (id: string, workspaceId?: string) => request<void>(`/api/agents/${id}${wsQuery(workspaceId)}`, del),
+
+  /** Teams you made (templates are in @forgeboard/shared). */
+  teams: () => request<Team[]>("/api/teams"),
+  createTeam: (input: CreateTeamInput) => request<Team>("/api/teams", post(input)),
+  updateTeam: (id: string, data: { name?: string; description?: string; planning?: string }) => request<Team>(`/api/teams/${id}`, patch(data)),
+  removeTeam: (id: string) => request<void>(`/api/teams/${id}`, del),
+  createTeamAgent: (teamId: string, input: CreateAgentInput) => request<Agent>(`/api/teams/${teamId}/agents`, post(input)),
+  updateTeamAgent: (teamId: string, id: string, data: Partial<Agent>) => request<Agent>(`/api/teams/${teamId}/agents/${id}`, patch(data)),
+  removeTeamAgent: (teamId: string, id: string) => request<void>(`/api/teams/${teamId}/agents/${id}`, del),
 
   /** Built-in flows first, then the ones you made. */
   flows: () => request<Flow[]>("/api/flows"),

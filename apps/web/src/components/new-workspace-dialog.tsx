@@ -2,9 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Check, Loader2, X } from "lucide-react";
-import { WORKSPACE_COLORS, type WorkspaceColor } from "@forgeboard/shared";
+import { TEAM_TEMPLATES, WORKSPACE_COLORS, type Locale, type WorkspaceColor } from "@forgeboard/shared";
 import { api } from "@/lib/api";
 import { useAppState } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
@@ -37,7 +37,8 @@ export function NewWorkspaceDialog() {
   const t = useTranslations("newWs");
   const tc = useTranslations("common");
   const router = useRouter();
-  const { newWorkspaceOpen, setNewWorkspaceOpen, activeWorkspaces, refreshWorkspaces, refreshRepos, refreshCrews } = useAppState();
+  const { newWorkspaceOpen, setNewWorkspaceOpen, activeWorkspaces, refreshWorkspaces, refreshRepos, refreshCrews, teams, refreshTeams } = useAppState();
+  const locale = useLocale() as Locale;
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -45,6 +46,8 @@ export function NewWorkspaceDialog() {
   const [path, setPath] = useState("");
   const [paths, setPaths] = useState<string[]>([]);
   const [crewFrom, setCrewFrom] = useState<string | null>(null);
+  // One of your teams (its id) or a template ("tpl:<id>", made into a team when you create the workspace).
+  const [teamChoice, setTeamChoice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,6 +61,7 @@ export function NewWorkspaceDialog() {
       setPath("");
       setPaths([]);
       setCrewFrom(null);
+      setTeamChoice(null);
       setError(null);
       dialog.showModal();
     } else if (!newWorkspaceOpen && dialog.open) {
@@ -78,8 +82,13 @@ export function NewWorkspaceDialog() {
     setBusy(true);
     setError(null);
     try {
-      const ws = await api.createWorkspace({ name: name.trim(), description: description.trim(), color, crewFrom, repoPaths: allPaths });
-      await Promise.all([refreshWorkspaces(), refreshRepos(), refreshCrews()]);
+      let teamId: string | null = null;
+      if (teamChoice?.startsWith("tpl:")) {
+        const tpl = TEAM_TEMPLATES.find((x) => x.id === teamChoice.slice(4))!;
+        teamId = (await api.createTeam({ name: tpl.name[locale], description: tpl.description[locale], templateId: tpl.id, locale })).id;
+      } else if (teamChoice) teamId = teamChoice;
+      const ws = await api.createWorkspace({ name: name.trim(), description: description.trim(), color, crewFrom: teamId ? null : crewFrom, teamId, repoPaths: allPaths });
+      await Promise.all([refreshWorkspaces(), refreshRepos(), refreshCrews(), refreshTeams()]);
       setNewWorkspaceOpen(false);
       router.push(`/w/${ws.id}`);
     } catch (err) {
@@ -180,20 +189,54 @@ export function NewWorkspaceDialog() {
 
           <div className="flex flex-col gap-2">
             <SectionLabel>{t("crew")}</SectionLabel>
-            <div role="radiogroup" aria-label={t("crew")} className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            <div role="radiogroup" aria-label={t("crew")} className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
               <button
                 type="button"
                 role="radio"
-                aria-checked={crewFrom === null}
-                onClick={() => setCrewFrom(null)}
-                className={cn("flex flex-col gap-1 rounded-[10px] border px-3.5 py-3 text-left", crewFrom === null ? "border-border-strong bg-panel-2" : "border-border")}
+                aria-checked={crewFrom === null && teamChoice === null}
+                onClick={() => {
+                  setCrewFrom(null);
+                  setTeamChoice(null);
+                }}
+                className={cn("flex flex-col gap-1 rounded-[10px] border px-3.5 py-3 text-left", crewFrom === null && teamChoice === null ? "border-border-strong bg-panel-2" : "border-border")}
               >
                 <span className="flex items-center gap-2 font-medium">
                   {t("crewDefault")}
-                  {crewFrom === null && <Check className="ml-auto size-3.5" aria-hidden="true" />}
+                  {crewFrom === null && teamChoice === null && <Check className="ml-auto size-3.5" aria-hidden="true" />}
                 </span>
                 <span className="text-[12.5px] text-muted">{t("crewDefaultHint")}</span>
               </button>
+              <div className={cn("flex flex-col gap-1.5 rounded-[10px] border px-3.5 py-3 text-left", teamChoice !== null ? "border-border-strong bg-panel-2" : "border-border")}>
+                <span className="font-medium">{t("crewTeam")}</span>
+                <span className="text-[12.5px] text-muted">{t("crewTeamHint")}</span>
+                <select
+                  aria-label={t("crewTeam")}
+                  value={teamChoice ?? ""}
+                  onChange={(e) => {
+                    setTeamChoice(e.target.value || null);
+                    if (e.target.value) setCrewFrom(null);
+                  }}
+                  className="mt-1 h-8 rounded-md border border-border bg-bg px-2 text-[12.5px] outline-none"
+                >
+                  <option value="">—</option>
+                  {teams.length > 0 && (
+                    <optgroup label={t("yourTeams")}>
+                      {teams.map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  <optgroup label={t("templates")}>
+                    {TEAM_TEMPLATES.map((x) => (
+                      <option key={x.id} value={`tpl:${x.id}`}>
+                        {x.name[locale]}
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+              </div>
               <div
                 className={cn("flex flex-col gap-1.5 rounded-[10px] border px-3.5 py-3 text-left", crewFrom !== null ? "border-border-strong bg-panel-2" : "border-border", copyable.length === 0 && "opacity-50")}
               >
@@ -203,7 +246,10 @@ export function NewWorkspaceDialog() {
                   aria-label={t("crewCopy")}
                   disabled={copyable.length === 0}
                   value={crewFrom ?? ""}
-                  onChange={(e) => setCrewFrom(e.target.value || null)}
+                  onChange={(e) => {
+                    setCrewFrom(e.target.value || null);
+                    if (e.target.value) setTeamChoice(null);
+                  }}
                   className="mt-1 h-8 rounded-md border border-border bg-bg px-2 text-[12.5px] outline-none"
                 >
                   <option value="">—</option>

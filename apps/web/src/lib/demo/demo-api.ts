@@ -23,10 +23,11 @@ import type {
   RunEventPayload,
   Task,
   TaskStatus,
+  Team,
   Verdict,
   Workspace,
 } from "@forgeboard/shared";
-import { BUILD_AND_REVIEW, LEAD_DECIDES } from "@forgeboard/shared";
+import { BUILD_AND_REVIEW, LEAD_DECIDES, TEAM_TEMPLATES, templateMembers } from "@forgeboard/shared";
 import type { Api, StreamHandlers } from "../api";
 import { sanitizeAnswer } from "@forgeboard/shared/a2ui";
 import {
@@ -59,6 +60,8 @@ interface Store {
   rules: HouseRule[];
   /** Flows the visitor made (Build & Review is built in). */
   flows: Flow[];
+  /** Teams the visitor made. */
+  teams: Team[];
   /** Steps left to play once the visitor acts (after a question). */
   pending: Map<string, Step[]>;
   timers: Map<string, ReturnType<typeof setTimeout>[]>;
@@ -332,6 +335,7 @@ function seed(locale: Locale): Store {
     defaults,
     overrides: new Map([[acme.id, acmeCrew]]),
     flows: [],
+    teams: [],
     rules: [
       { id: id(), scope: "global", workspaceId: null, repoId: null, text: tr(L, "Conventional commits, in English", "Conventional commits, em inglês"), enabled: true, source: "you", createdAt: iso(ago(6000)) },
       { id: id(), scope: "workspace", workspaceId: acme.id, repoId: null, text: tr(L, "Never use `any` in TypeScript", "Nunca usar `any` no TypeScript"), enabled: true, source: "you", createdAt: iso(ago(5000)) },
@@ -429,6 +433,10 @@ const fail = (message: string) => Promise.reject(new Error(message));
 function crewFor(workspaceId?: string): Agent[] {
   const st = s();
   const w = workspaceId ? st.workspaces.find((x) => x.id === workspaceId) : undefined;
+  if (w?.crewMode === "team") {
+    const team = st.teams.find((x) => x.id === w.teamId);
+    if (team) return team.members.map((m) => ({ ...m, builtIn: false, customized: false }));
+  }
   if (!w || w.crewMode !== "custom") return st.defaults;
   return st.overrides.get(w.id) ?? st.defaults.map((a) => ({ ...a, customized: false }));
 }
@@ -457,7 +465,8 @@ export const demoApi: Api = {
       name: input.name,
       description: input.description ?? "",
       color: input.color,
-      crewMode: input.crewFrom ? "custom" : "default",
+      crewMode: input.teamId ? "team" : input.crewFrom ? "custom" : "default",
+      ...(input.teamId ? { teamId: input.teamId } : {}),
       archived: false,
       createdAt: iso(Date.now()),
     };
@@ -582,6 +591,56 @@ export const demoApi: Api = {
             entries: ["Desktop", "dev", "Documents", "Downloads"].map((name) => ({ name, path: `${home}/${name}`, isRepo: false, added: false })),
           };
     return ok(listing);
+  },
+  teams: () => ok(s().teams),
+  createTeam: (input) => {
+    const st = s();
+    const tpl = TEAM_TEMPLATES.find((x) => x.id === input.templateId);
+    const team: Team = {
+      id: id(),
+      name: input.name,
+      description: input.description ?? "",
+      planning: tpl?.planning ?? BUILD_AND_REVIEW.id,
+      members: tpl ? templateMembers(tpl, input.locale) : clone(st.defaults).map(({ builtIn: _b, customized: _c, ...a }) => a),
+      ...(tpl ? { templateId: tpl.id } : {}),
+      createdAt: iso(Date.now()),
+    };
+    st.teams.push(team);
+    return ok(team);
+  },
+  updateTeam: (teamId, data) => {
+    const team = s().teams.find((x) => x.id === teamId);
+    if (!team) return fail("Team not found");
+    Object.assign(team, data);
+    return ok(team);
+  },
+  removeTeam: (teamId) => {
+    const st = s();
+    st.teams = st.teams.filter((x) => x.id !== teamId);
+    for (const w of st.workspaces) if (w.crewMode === "team" && w.teamId === teamId) {
+      w.crewMode = "default";
+      delete w.teamId;
+    }
+    return ok(undefined);
+  },
+  createTeamAgent: (teamId, input) => {
+    const team = s().teams.find((x) => x.id === teamId);
+    if (!team) return fail("Team not found");
+    const agent: Agent = { id: id(), instructions: "", ...input };
+    team.members.push(agent);
+    return ok(agent);
+  },
+  updateTeamAgent: (teamId, agentId, data) => {
+    const team = s().teams.find((x) => x.id === teamId);
+    const m = team?.members.find((x) => x.id === agentId);
+    if (!m) return fail("Agent not found");
+    Object.assign(m, data, { role: m.role });
+    return ok(m);
+  },
+  removeTeamAgent: (teamId, agentId) => {
+    const team = s().teams.find((x) => x.id === teamId);
+    if (team) team.members = team.members.filter((x) => x.id !== agentId);
+    return ok(undefined);
   },
   flows: () => ok([BUILD_AND_REVIEW, LEAD_DECIDES, ...s().flows]),
   createFlow: (input) => {

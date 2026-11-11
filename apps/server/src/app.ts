@@ -15,6 +15,8 @@ import {
   MAX_AGENTS,
   MAX_FLOW_ROUNDS,
   MAX_FLOW_STEPS,
+  TEAM_TEMPLATES,
+  templateMembers,
   validateFlow,
   WORKSPACE_COLORS,
   type Agent,
@@ -23,6 +25,8 @@ import {
   type FolderListing,
   type FlowProblem,
   type HouseRule,
+  type Locale,
+  type Team,
   type Repo,
   type RuleScope,
   type RunEvent,
@@ -34,7 +38,7 @@ import { auth, matchesToken } from "./auth.js";
 import { bus } from "./bus.js";
 import { detectChecks } from "./checks.js";
 import { config } from "./config.js";
-import { agents, events, flows, repos, rules, tasks, workspaces } from "./db.js";
+import { agents, events, flows, repos, rules, tasks, teams, workspaces } from "./db.js";
 import { GitError, repoRoot } from "./git.js";
 import {
   ackAssumptions,
@@ -161,10 +165,12 @@ app.post("/api/workspaces", async (c) => {
       description: z.string().trim().max(80).default(""),
       color: colorSchema,
       crewFrom: z.string().nullable().optional(),
+      teamId: z.string().nullable().optional(),
       repoPaths: z.array(z.string().min(1)).max(20).default([]),
     }),
   );
   const source = input.crewFrom ? mustGetWorkspace(input.crewFrom) : null;
+  const team = input.teamId ? mustGetTeam(input.teamId) : null;
 
   // Validate every folder before creating anything.
   for (const p of input.repoPaths) {
@@ -178,7 +184,8 @@ app.post("/api/workspaces", async (c) => {
     name: input.name,
     description: input.description,
     color: input.color,
-    crewMode: source ? "custom" : "default",
+    crewMode: team ? "team" : source ? "custom" : "default",
+    ...(team ? { teamId: team.id } : {}),
     archived: false,
     createdAt: new Date().toISOString(),
   };
@@ -196,7 +203,8 @@ app.patch("/api/workspaces/:id", async (c) => {
       name: z.string().trim().min(1).max(40).optional(),
       description: z.string().trim().max(80).optional(),
       color: colorSchema.optional(),
-      crewMode: z.enum(["default", "custom"]).optional(),
+      crewMode: z.enum(["default", "custom", "team"]).optional(),
+      teamId: z.string().min(1).optional(),
       forgeCommands: z.enum(["standard", "restricted"]).optional(),
       askMode: z.enum(["ask", "decide"]).optional(),
       planFirst: z.boolean().optional(),
@@ -205,6 +213,7 @@ app.patch("/api/workspaces/:id", async (c) => {
       archived: z.boolean().optional(),
     }),
   );
+  if (patch.crewMode === "team" || patch.teamId) mustGetTeam(patch.teamId ?? ws.teamId ?? "");
   if (patch.defaultFlowId) flowFor(ws.id, patch.defaultFlowId);
   const next = { ...ws, ...patch };
   // Switching to a custom crew starts from the default crew.
@@ -221,6 +230,121 @@ app.delete("/api/workspaces/:id", (c) => {
     throw new FlowError("This workspace has open tasks. Merge, discard or wait for them first.");
   }
   workspaces.remove(ws.id);
+  return c.body(null, 204);
+});
+
+// ---------- Teams ----------
+
+function mustGetTeam(id: string): Team {
+  const team = teams.get(id);
+  if (!team) throw new HttpError(404, "Team not found");
+  return team;
+}
+
+/** The flow a workspace's tasks run unless they pick one: its own default, its team's, or Build & Review. */
+function defaultFlowIdFor(workspaceId: string): string {
+  const ws = workspaces.get(workspaceId);
+  const team = ws?.crewMode === "team" && ws.teamId ? teams.get(ws.teamId) : undefined;
+  return ws?.defaultFlowId ?? team?.planning ?? BUILD_AND_REVIEW_ID;
+}
+
+app.get("/api/teams", (c) => c.json(teams.list()));
+
+app.post("/api/teams", async (c) => {
+  const input = await body(
+    c,
+    z.object({
+      name: z.string().trim().min(1).max(40),
+      description: z.string().trim().max(200).default(""),
+      templateId: z.string().optional(),
+      locale: z.enum(LOCALES as [string, ...string[]]),
+    }),
+  );
+  const template = input.templateId ? TEAM_TEMPLATES.find((t) => t.id === input.templateId) : undefined;
+  if (input.templateId && !template) throw new HttpError(404, "Template not found");
+  const team: Team = {
+    id: nanoid(10),
+    name: input.name,
+    description: input.description,
+    planning: template?.planning ?? BUILD_AND_REVIEW_ID,
+    // Without a template, a team starts as a copy of the default team.
+    members: template ? templateMembers(template, input.locale as Locale) : agents.defaults().map(({ builtIn: _b, customized: _c, ...a }) => a),
+    ...(template ? { templateId: template.id } : {}),
+    createdAt: new Date().toISOString(),
+  };
+  teams.save(team);
+  return c.json(team, 201);
+});
+
+app.patch("/api/teams/:id", async (c) => {
+  const team = mustGetTeam(c.req.param("id"));
+  const patch = await body(
+    c,
+    z.object({
+      name: z.string().trim().min(1).max(40).optional(),
+      description: z.string().trim().max(200).optional(),
+      planning: z.string().min(1).optional(),
+    }),
+  );
+  if (patch.planning && !flows.get(patch.planning)) throw new HttpError(404, "Flow not found");
+  const next = { ...team, ...patch };
+  teams.save(next);
+  return c.json(next);
+});
+
+app.delete("/api/teams/:id", (c) => {
+  const team = mustGetTeam(c.req.param("id"));
+  // Workspaces that used it go back to the default team.
+  for (const ws of workspaces.list()) {
+    if (ws.crewMode === "team" && ws.teamId === team.id) workspaces.save({ ...ws, crewMode: "default", teamId: undefined });
+  }
+  teams.remove(team.id);
+  return c.body(null, 204);
+});
+
+app.post("/api/teams/:id/agents", async (c) => {
+  const team = mustGetTeam(c.req.param("id"));
+  const input = await body(
+    c,
+    z.object({ ...agentFields, role: z.enum(["builder", "reviewer"]), instructions: agentFields.instructions.default("") }),
+  );
+  if (team.members.length >= MAX_AGENTS) throw new FlowError(`A crew can have at most ${MAX_AGENTS} agents.`);
+  const agent: Agent = { id: nanoid(8), ...input };
+  teams.save({ ...team, members: [...team.members, agent] });
+  return c.json(agent, 201);
+});
+
+app.patch("/api/teams/:id/agents/:agentId", async (c) => {
+  const team = mustGetTeam(c.req.param("id"));
+  const current = team.members.find((m) => m.id === c.req.param("agentId"));
+  if (!current) throw new HttpError(404, "Agent not found");
+  const patch = await body(
+    c,
+    z.object({
+      name: agentFields.name.optional(),
+      provider: agentFields.provider.optional(),
+      personality: agentFields.personality.optional(),
+      instructions: agentFields.instructions.optional(),
+      role: z.enum(["builder", "reviewer"]).optional(),
+    }),
+  );
+  // Forge, Hawk and Lead keep their role, in a team too.
+  const fixed = current.role === "lead" || current.id === "forge" || current.id === "hawk";
+  const next: Agent = { ...current, ...patch, role: fixed ? current.role : (patch.role ?? current.role) };
+  teams.save({ ...team, members: team.members.map((m) => (m.id === current.id ? next : m)) });
+  return c.json(next);
+});
+
+app.delete("/api/teams/:id/agents/:agentId", (c) => {
+  const team = mustGetTeam(c.req.param("id"));
+  const id = c.req.param("agentId");
+  if (!team.members.some((m) => m.id === id)) throw new HttpError(404, "Agent not found");
+  const usedBy = flows.usingAgent(id);
+  const elsewhere = agents.defaults().some((a) => a.id === id);
+  if (usedBy.length && !elsewhere) {
+    throw new FlowError(`This agent is used by the flow "${usedBy[0]!.name}". Remove it from the flow first.`);
+  }
+  teams.save({ ...team, members: team.members.filter((m) => m.id !== id) });
   return c.body(null, 204);
 });
 
@@ -481,6 +605,9 @@ app.delete("/api/flows/:id", (c) => {
   for (const ws of workspaces.list()) {
     if (ws.defaultFlowId === flow.id) workspaces.save({ ...ws, defaultFlowId: undefined });
   }
+  for (const team of teams.list()) {
+    if (team.planning === flow.id) teams.save({ ...team, planning: BUILD_AND_REVIEW_ID });
+  }
   flows.remove(flow.id);
   return c.body(null, 204);
 });
@@ -576,7 +703,7 @@ app.post("/api/tasks", async (c) => {
   const repo = repos.get(input.repoId);
   if (!repo) throw new HttpError(404, "Repo not found");
   // Copied now, so later edits to the flow don't change this task.
-  const flow = flowFor(repo.workspaceId, input.flowId ?? workspaces.get(repo.workspaceId)?.defaultFlowId ?? BUILD_AND_REVIEW_ID);
+  const flow = flowFor(repo.workspaceId, input.flowId ?? defaultFlowIdFor(repo.workspaceId));
 
   const now = new Date().toISOString();
   const task: Task = {

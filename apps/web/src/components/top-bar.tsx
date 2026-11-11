@@ -19,7 +19,7 @@ export function Composer({ workspaceId, repoId: preferredRepo, className }: { wo
   const t = useTranslations("composer");
   const router = useRouter();
   const locale = useLocale() as Locale;
-  const { repos, activeWorkspaces, workspace, lastRepoId, rememberRepo, refreshTasks, flows } = useAppState();
+  const { repos, activeWorkspaces, workspace, lastRepoId, rememberRepo, refreshTasks, flows, teams } = useAppState();
   const flowName = useFlowName();
   const [prompt, setPrompt] = useState("");
   const [repoId, setRepoId] = useState<string>("");
@@ -40,7 +40,8 @@ export function Composer({ workspaceId, repoId: preferredRepo, className }: { wo
 
   // The flow follows the chosen repo's workspace default until you pick another.
   const repoWs = workspace(repos.find((r) => r.id === repoId)?.workspaceId);
-  const wsDefault = repoWs?.defaultFlowId && flows.some((f) => f.id === repoWs.defaultFlowId) ? repoWs.defaultFlowId : BUILD_AND_REVIEW_ID;
+  const repoTeam = repoWs?.crewMode === "team" ? teams.find((x) => x.id === repoWs.teamId) : undefined;
+  const wsDefault = [repoWs?.defaultFlowId, repoTeam?.planning].find((id) => id && flows.some((f) => f.id === id)) ?? BUILD_AND_REVIEW_ID;
   useEffect(() => setFlowId(wsDefault), [wsDefault]);
 
   async function submit(e?: FormEvent) {

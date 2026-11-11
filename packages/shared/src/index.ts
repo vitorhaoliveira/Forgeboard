@@ -69,6 +69,38 @@ export interface CreateAgentInput {
   instructions?: string;
 }
 
+/** A named group of agents a workspace can use, with the flow its tasks run by default. */
+export interface Team {
+  id: string;
+  name: string;
+  description: string;
+  /** Flow new tasks run (unless the workspace or the task picks another). */
+  planning: string;
+  members: Agent[];
+  /** The template it started from, if any. */
+  templateId?: string;
+  createdAt: string;
+}
+
+export interface CreateTeamInput {
+  name: string;
+  description?: string;
+  /** Start from a template; without one, the team starts as a copy of the default team. */
+  templateId?: string;
+  locale: Locale;
+}
+
+/** A ready-made team. Texts come in each language; picking it makes your own copy. */
+export interface TeamTemplate {
+  id: string;
+  name: Record<Locale, string>;
+  description: Record<Locale, string>;
+  planning: string;
+  members: (Omit<Agent, "instructions" | "builtIn" | "customized"> & { instructions: Record<Locale, string> })[];
+  /** Tasks this team is good at, to give an idea. */
+  examples: Record<Locale, string[]>;
+}
+
 /** One step of a flow. Step ids are unique inside a flow and name the graph node. */
 export type FlowStep =
   | {
@@ -243,8 +275,10 @@ export interface Workspace {
   name: string;
   description: string;
   color: WorkspaceColor;
-  /** "default" uses the default crew; "custom" keeps its own agent settings. */
-  crewMode: "default" | "custom";
+  /** "default": the default team. "custom": its own copy of the agents. "team": one of your teams (teamId). */
+  crewMode: "default" | "custom" | "team";
+  /** With crewMode "team": the team it uses. */
+  teamId?: string;
   /** Missing on workspaces created before v1.7.1, which means "standard". */
   forgeCommands?: ForgeCommands;
   /** Missing means "ask" (the behavior before v1.9). */
@@ -265,6 +299,8 @@ export interface CreateWorkspaceInput {
   color: WorkspaceColor;
   /** Copy the crew from another workspace instead of using the default crew. */
   crewFrom?: string | null;
+  /** Use one of your teams. */
+  teamId?: string | null;
   repoPaths?: string[];
 }
 
@@ -496,3 +532,161 @@ export function isActive(status: TaskStatus): boolean {
 export function needsYou(status: TaskStatus): boolean {
   return status === "waiting" || status === "review";
 }
+
+// ---------- Team templates ----------
+
+const FORGE_T = {
+  id: "forge",
+  name: "Forge",
+  role: "builder" as const,
+  provider: "claude-code" as const,
+  personality: "balanced" as const,
+  instructions: {
+    "en-US": "Keep changes small and focused. Follow the conventions already used in the repository.",
+    "pt-BR": "Mantenha as mudanças pequenas e focadas. Siga as convenções que o repositório já usa.",
+  },
+};
+const HAWK_T = {
+  id: "hawk",
+  name: "Hawk",
+  role: "reviewer" as const,
+  provider: "claude-code" as const,
+  personality: "strict" as const,
+  instructions: {
+    "en-US": "Block on failing checks and on real bugs. Do not nitpick style that a linter would catch.",
+    "pt-BR": "Bloqueie verificações falhando e bugs de verdade. Não implique com estilo que um linter pegaria.",
+  },
+};
+const LEAD_T = {
+  id: "lead",
+  name: "Lead",
+  role: "lead" as const,
+  provider: "claude-code" as const,
+  personality: "balanced" as const,
+  instructions: {
+    "en-US": "Pick the smallest team that does the task well. Skip the review for trivial changes; add one for anything risky or public.",
+    "pt-BR": "Escolha o menor time que faça a tarefa bem. Pule a revisão em mudanças triviais; inclua uma em tudo que for arriscado ou público.",
+  },
+};
+
+/** Ready-made teams for code. Teams for docs, research and content come with "any kind of work". */
+export const TEAM_TEMPLATES: TeamTemplate[] = [
+  {
+    id: "build-review",
+    name: { "en-US": "Build & Review", "pt-BR": "Construir e revisar" },
+    description: {
+      "en-US": "Forge builds, Hawk reviews and sends it back until it's right. The classic.",
+      "pt-BR": "O Forge constrói, o Hawk revisa e devolve até ficar certo. O clássico.",
+    },
+    planning: "build-and-review",
+    members: [FORGE_T, HAWK_T],
+    examples: {
+      "en-US": ["Add pagination to the users table", "Fix the date shown in the invoice"],
+      "pt-BR": ["Adicionar paginação na tabela de usuários", "Corrigir a data mostrada na fatura"],
+    },
+  },
+  {
+    id: "product",
+    name: { "en-US": "Product team", "pt-BR": "Time de produto" },
+    description: {
+      "en-US": "A Lead picks who works on each task: Forge builds, Scribe writes the docs, Hawk reviews and Guard checks security.",
+      "pt-BR": "Um Lead escolhe quem trabalha em cada tarefa: o Forge constrói, o Scribe escreve a documentação, o Hawk revisa e o Guard cuida da segurança.",
+    },
+    planning: "lead-decides",
+    members: [
+      LEAD_T,
+      FORGE_T,
+      {
+        id: "scribe",
+        name: "Scribe",
+        role: "builder",
+        provider: "claude-code",
+        personality: "mentor",
+        instructions: {
+          "en-US": "You write the docs: README, guides and comments people read. Explain what changed and how to use it, with short examples. Don't change code.",
+          "pt-BR": "Você escreve a documentação: README, guias e comentários que as pessoas leem. Explique o que mudou e como usar, com exemplos curtos. Não mude o código.",
+        },
+      },
+      HAWK_T,
+      {
+        id: "guard",
+        name: "Guard",
+        role: "reviewer",
+        provider: "claude-code",
+        personality: "strict",
+        instructions: {
+          "en-US": "Review only for security: secrets in code, injection, unsafe input, auth and permission mistakes, risky dependencies. Ignore style.",
+          "pt-BR": "Revise só segurança: segredos no código, injeção, entrada insegura, erros de autenticação e permissão, dependências arriscadas. Ignore estilo.",
+        },
+      },
+    ],
+    examples: {
+      "en-US": ["Add password reset by email", "Document the public API"],
+      "pt-BR": ["Adicionar recuperação de senha por e-mail", "Documentar a API pública"],
+    },
+  },
+  {
+    id: "quick-fix",
+    name: { "en-US": "Quick fix", "pt-BR": "Correção rápida" },
+    description: {
+      "en-US": "Forge fixes it and the checks confirm it. No review round: for small, low-risk changes.",
+      "pt-BR": "O Forge corrige e as verificações confirmam. Sem rodada de revisão: para mudanças pequenas e de baixo risco.",
+    },
+    planning: "lead-decides",
+    members: [
+      {
+        ...LEAD_T,
+        instructions: {
+          "en-US": "Keep it minimal: Forge and the checks. Add a reviewer only if the change turns out risky.",
+          "pt-BR": "Mantenha o mínimo: o Forge e as verificações. Inclua um revisor só se a mudança se mostrar arriscada.",
+        },
+      },
+      FORGE_T,
+    ],
+    examples: {
+      "en-US": ["Fix the typo on the login page", "Update the copyright year"],
+      "pt-BR": ["Corrigir o erro de digitação na tela de login", "Atualizar o ano do copyright"],
+    },
+  },
+  {
+    id: "test-first",
+    name: { "en-US": "Tests first", "pt-BR": "Testes primeiro" },
+    description: {
+      "en-US": "Probe writes the tests that describe the change, Forge makes them pass, Hawk reviews both.",
+      "pt-BR": "O Probe escreve os testes que descrevem a mudança, o Forge faz eles passarem e o Hawk revisa os dois.",
+    },
+    planning: "lead-decides",
+    members: [
+      {
+        ...LEAD_T,
+        instructions: {
+          "en-US": "Start with Probe writing the tests, then Forge, then the checks; add Hawk for anything beyond a small change.",
+          "pt-BR": "Comece com o Probe escrevendo os testes, depois o Forge, depois as verificações; inclua o Hawk em tudo que não for uma mudança pequena.",
+        },
+      },
+      {
+        id: "probe",
+        name: "Probe",
+        role: "builder",
+        provider: "claude-code",
+        personality: "strict",
+        instructions: {
+          "en-US": "Write tests only: the cases that describe the requested behavior, including edge cases. Don't implement the feature.",
+          "pt-BR": "Escreva só testes: os casos que descrevem o comportamento pedido, incluindo casos de borda. Não implemente a funcionalidade.",
+        },
+      },
+      FORGE_T,
+      HAWK_T,
+    ],
+    examples: {
+      "en-US": ["Add discount rules to the cart", "Validate the signup form"],
+      "pt-BR": ["Adicionar regras de desconto no carrinho", "Validar o formulário de cadastro"],
+    },
+  },
+];
+
+/** A template's agents in one language, ready to save as a team's members. */
+export function templateMembers(template: TeamTemplate, locale: Locale): Agent[] {
+  return template.members.map((m) => ({ ...m, instructions: m.instructions[locale] }));
+}
+
