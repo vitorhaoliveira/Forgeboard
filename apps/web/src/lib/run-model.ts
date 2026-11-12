@@ -98,7 +98,7 @@ export function runBounds(events: RunEvent[], task: Task, now: number): { start:
 }
 
 /** Lines agents end their message with, for Forgeboard to read. They aren't shown. */
-const MARKERS = ["FORGEBOARD_QUESTION:", "FORGEBOARD_FORM:", "FORGEBOARD_ASSUMPTIONS:", "FORGEBOARD_PLAN:"];
+const MARKERS = ["FORGEBOARD_QUESTION:", "FORGEBOARD_FORM:", "FORGEBOARD_ASSUMPTIONS:", "FORGEBOARD_PLAN:", "FORGEBOARD_DECISION:", "FORGEBOARD_ANSWER:"];
 
 /** Agent text without machine-readable parts (question marker, Hawk's verdict json). */
 export function cleanAgentText(text: string): string {

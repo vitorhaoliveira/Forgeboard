@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { nanoid } from "nanoid";
 import { compileForm, sanitizeAnswer, validateUi } from "@forgeboard/shared/a2ui";
-import { BUILD_AND_REVIEW, isDocument, MAX_PLAN_REVISIONS, validateFlow } from "@forgeboard/shared";
+import { BUILD_AND_REVIEW, isDocument, MAX_LEAD_ANSWERS, MAX_LEAD_CHECKPOINTS, MAX_PLAN_REVISIONS, validateFlow } from "@forgeboard/shared";
 import type {
   Actor,
   Agent,
@@ -34,7 +34,12 @@ import {
   forgeStartPrompt,
   type ForgeStyle,
   hawkPrompt,
+  leadAnswerPrompt,
+  leadCheckpointPrompt,
   leadPrompt,
+  parseDecision,
+  parseLeadAnswer,
+  type CheckpointContext,
   messagesNote,
   parseAssumptions,
   parseForm,
@@ -122,7 +127,8 @@ function activityEmitter(taskId: string, actor: Actor) {
 // ---------- Steps ----------
 
 type BuilderMode =
-  | { kind: "start" }
+  /** With `brief`: the Lead brought this builder in mid-task and says why. */
+  | { kind: "start"; brief?: string }
   | { kind: "answer"; answer: string; form?: AgentForm; data?: FormAnswer; note?: string; replan?: boolean }
   | { kind: "fix" }
   | { kind: "notes"; notes: string }
@@ -232,7 +238,7 @@ async function builderStep(taskId: string, step: AgentStep, mode: BuilderMode, s
 
   const base =
     mode.kind === "start"
-      ? forgeStartPrompt(agent, task, repoRules, commands, style)
+      ? forgeStartPrompt(agent, task, repoRules, commands, style, mode.brief)
       : mode.kind === "answer"
         ? forgeAnswerPrompt(mode.answer, mode.form, mode.data, mode, style)
         : mode.kind === "fix"
@@ -279,6 +285,25 @@ async function builderStep(taskId: string, step: AgentStep, mode: BuilderMode, s
   addCost(taskId, output.costUsd);
 
   const question = formQuestion(taskId, output.text, task.locale) ?? parseQuestion(output.text);
+  if (question && !question.form && leadOf(task)) {
+    // A plain question in a task the Lead planned: the Lead answers it, or suggests an answer.
+    emit(taskId, { type: "question", actor: agent.id, question: { ...question, askedBy: agent.id } });
+    const reply = await leadAnswer(taskId, agent, question, signal);
+    if (reply?.sure && style.askMode === "decide") {
+      node(taskId, step.id, "active");
+      return builderStep(taskId, step, { kind: "answer", answer: reply.answer }, signal);
+    }
+    if (reply) {
+      const match = question.options.findIndex((o) => o.trim().toLowerCase() === reply.answer.trim().toLowerCase());
+      question.leadAnswer = { by: leadOf(task)!.agentId, answer: reply.answer, why: reply.why };
+      if (match !== -1) question.suggested = match;
+    }
+    node(taskId, step.id, "warn");
+    node(taskId, "you", "active");
+    taskState.set(taskId, { resumeStep: step.id });
+    setStatus(taskId, "waiting", { question: { ...question, askedBy: agent.id } });
+    return "question";
+  }
   if (question) {
     // The provider already streamed the message itself; the UI hides the marker line.
     emit(taskId, { type: "question", actor: agent.id, question: { ...question, askedBy: agent.id } });
@@ -466,6 +491,23 @@ async function runFlow(taskId: string, from: string | number, firstMode: Builder
       i = back;
       continue;
     }
+    if (back !== -1 && !verdict.approved && leadOf(current)) {
+      // Rounds ran out: the Lead decides what happens instead of handing it straight to you.
+      const decision = await stuckCheckpoint(taskId, i, verdict, checks ?? [], builder?.name ?? "Forge", signal);
+      if (decision.action === "retry") {
+        const target = flow.steps[back] as AgentStep;
+        const count = verdict.issues.length + (checks ?? []).filter((c) => !c.ok).length;
+        emit(taskId, { type: "handoff", actor: agent.id, to: target.agentId, label: String(count), fromStep: step.id, toStep: target.id });
+        nextRound(taskId, true);
+        mode = { kind: "fix" };
+        i = back;
+        continue;
+      }
+      if (decision.action === "replan") {
+        nextRound(taskId, true);
+        return runFlow(taskId, i + 1, { kind: "start", brief: decision.brief }, signal);
+      }
+    }
     i++;
   }
 
@@ -559,6 +601,159 @@ async function leadStep(taskId: string, step: LeadFlowStep, replan: { note: stri
   node(taskId, step.id, "done");
 }
 
+/** The lead step of a task the Lead planned. */
+function leadOf(task: Task): LeadFlowStep | undefined {
+  const first = flowOf(task).steps[0];
+  return first?.type === "lead" ? first : undefined;
+}
+
+/** Steps as lines for the Lead: "- Forge (sends back to …): why". */
+function describeSteps(task: Task, steps: FlowStep[]): string {
+  const pt = task.locale === "pt-BR";
+  const all = flowOf(task).steps;
+  const nameOf = (s: FlowStep) =>
+    s.type === "agent" ? agents.forFlow(task.workspaceId, s.agentId)?.name ?? s.agentId : s.type === "checks" ? (pt ? "Verificações" : "Checks") : pt ? "Pausa" : "Pause";
+  return steps
+    .filter((s) => s.type !== "lead")
+    .map((s) => {
+      const back = s.type === "agent" && s.sendBackTo ? all.find((x) => x.id === s.sendBackTo) : undefined;
+      return `- ${nameOf(s)}${back ? ` (sends back to ${nameOf(back)})` : ""}${task.plan?.reasons[s.id] ? `: ${task.plan.reasons[s.id]}` : ""}`;
+    })
+    .join("\n");
+}
+
+/** Runs the Lead once (read only), with its activity in the feed and its node lit. */
+async function runLead(taskId: string, prompt: string, signal: AbortSignal): Promise<{ lead: Agent; text: string }> {
+  const task = tasks.get(taskId)!;
+  const step = leadOf(task)!;
+  const lead = agents.forStep(task.workspaceId, step.agentId);
+  const { worktree } = requireWorktree(taskId);
+  node(taskId, step.id, "active");
+  const output = await getProvider(lead.provider).run({
+    role: "lead",
+    prompt,
+    cwd: worktree,
+    permissionMode: "plan",
+    disallowedTools: REVIEWER_DISALLOWED_TOOLS,
+    locale: task.locale,
+    round: task.round,
+    signal,
+    emit: activityEmitter(taskId, lead.id),
+  });
+  addCost(taskId, output.costUsd);
+  node(taskId, step.id, "done");
+  return { lead, text: output.text };
+}
+
+function teammates(workspaceId: string) {
+  return teamFor(workspaceId)
+    .filter((a): a is Agent & { role: "builder" | "reviewer" } => a.role !== "lead")
+    .map((a) => ({ id: a.id, name: a.name, role: a.role, instructions: a.instructions }));
+}
+
+/** The Lead's answer to a builder's question, or null when it can't give one (or used up its answers). */
+async function leadAnswer(taskId: string, asker: Agent, question: AgentQuestion, signal: AbortSignal) {
+  const task = tasks.get(taskId)!;
+  if ((task.plan?.answers ?? 0) >= MAX_LEAD_ANSWERS) return null;
+  const lead = agents.forStep(task.workspaceId, leadOf(task)!.agentId);
+  const { text } = await runLead(
+    taskId,
+    leadAnswerPrompt(lead, task, rules.forRepo(repos.get(task.repoId)!), asker.name, question, yourWords(taskId), workFor(task.workspaceId)),
+    signal,
+  );
+  const reply = parseLeadAnswer(text);
+  if (!reply) return null;
+  const current = tasks.get(taskId)!;
+  if (current.plan) tasks.update(taskId, { plan: { ...current.plan, answers: (current.plan.answers ?? 0) + 1 } });
+  const decide = styleFor(task.workspaceId).askMode === "decide" && reply.sure;
+  emit(taskId, {
+    type: "checkpoint",
+    actor: lead.id,
+    kind: "question",
+    // "answer": it went to the builder; "you": it waits for you, with the Lead's suggestion.
+    action: decide ? "answer" : "you",
+    why: reply.why,
+    answer: reply.answer,
+    to: asker.id,
+  });
+  return reply;
+}
+
+/**
+ * Asks the Lead at a checkpoint and applies its decision. With "replan", the task's flow keeps the
+ * steps up to `at` and gets the Lead's new steps after it. Past the limit, or without a usable
+ * decision, it is "you" (stuck) or "continue" (note).
+ */
+async function leadCheckpoint(
+  taskId: string,
+  at: number,
+  ctx: Omit<CheckpointContext, "done" | "ahead" | "rounds">,
+  signal: AbortSignal,
+): Promise<{ action: "retry" | "replan" | "you" | "continue"; brief?: string }> {
+  const fallback = ctx.kind === "stuck" ? "you" : "continue";
+  const task = tasks.get(taskId)!;
+  if ((task.plan?.checkpoints ?? 0) >= MAX_LEAD_CHECKPOINTS) return { action: fallback };
+  const flow = flowOf(task);
+  const lead = agents.forStep(task.workspaceId, leadOf(task)!.agentId);
+  const repo = repos.get(task.repoId)!;
+  const team = teammates(task.workspaceId);
+  const full: CheckpointContext = {
+    ...ctx,
+    done: describeSteps(task, flow.steps.slice(0, at + 1)),
+    ahead: describeSteps(task, flow.steps.slice(at + 1)),
+    rounds: task.round,
+  };
+  const { text } = await runLead(
+    taskId,
+    leadCheckpointPrompt(lead, task, rules.forRepo(repo), team, repo.checks.map((c) => c.name), full, workFor(task.workspaceId), commandsFor(task.workspaceId) === "standard"),
+    signal,
+  );
+  const allowed: ("retry" | "replan" | "you" | "continue")[] = ctx.kind === "stuck" ? ["retry", "replan", "you"] : ["replan", "continue"];
+  const prefix = flow.steps.slice(0, at + 1);
+  let decision = parseDecision(text, allowed, prefix);
+  // New steps must make a valid flow with the steps that already ran.
+  let steps: FlowStep[] = [];
+  if (decision?.action === "replan") {
+    // Rounds are counted per task: new reviewers get two more from here.
+    steps = (decision.plan?.steps ?? []).map((s) => (s.type === "agent" ? (({ maxRounds: _m, ...rest }) => rest)(s) : s));
+    const roleOf = (id: string) => team.find((a) => a.id === id)?.role;
+    const problems = steps.length ? validateFlow({ name: "plan", steps: [...prefix.slice(1), ...steps] }, roleOf) : ["empty"];
+    if (problems.length) {
+      console.warn(`[forgeboard] lead checkpoint for ${taskId} not usable:`, problems);
+      decision = null;
+    }
+  }
+  const current = tasks.get(taskId)!;
+  const plan = current.plan ?? { by: lead.id, summary: "", reasons: {}, revisions: 0 };
+  const pt = task.locale === "pt-BR";
+  if (!decision) {
+    const why = pt ? `O ${lead.name} não conseguiu decidir, então segue como estava.` : `${lead.name} couldn't decide, so it goes on as it was.`;
+    emit(taskId, { type: "checkpoint", actor: lead.id, kind: ctx.kind, action: fallback, why });
+    tasks.update(taskId, { plan: { ...plan, checkpoints: (plan.checkpoints ?? 0) + 1 } });
+    return { action: fallback };
+  }
+  const reasons = { ...plan.reasons, ...(decision.plan?.reasons ?? {}) };
+  tasks.update(taskId, {
+    plan: { ...plan, reasons, checkpoints: (plan.checkpoints ?? 0) + 1 },
+    ...(decision.action === "replan" ? { flow: { ...flow, steps: [...prefix, ...steps] }, maxRounds: current.round + 2 } : {}),
+  });
+  emit(taskId, { type: "checkpoint", actor: lead.id, kind: ctx.kind, action: decision.action, why: decision.why, ...(decision.action === "replan" ? { steps } : {}) });
+  const brief = decision.action === "replan" ? [ctx.note ? `The user asked: ${ctx.note}` : "", decision.why].filter(Boolean).join("\n") : undefined;
+  return { action: decision.action, brief };
+}
+
+/** A reviewer still asks for changes after its last round, in a task the Lead planned. */
+function stuckCheckpoint(taskId: string, at: number, verdict: Verdict, checks: CheckResult[], _builder: string, signal: AbortSignal) {
+  const task = tasks.get(taskId)!;
+  const reviewer = agents.forStep(task.workspaceId, (flowOf(task).steps[at] as AgentStep).agentId);
+  return leadCheckpoint(
+    taskId,
+    at,
+    { kind: "stuck", review: { reviewer: reviewer.name, summary: verdict.summary, issues: verdict.issues, failedChecks: checks.filter((c) => !c.ok).map((c) => c.name) } },
+    signal,
+  );
+}
+
 /** "Ask first": the plan waits for you. Its first option approves it; anything you write asks for another plan. */
 function askPlanApproval(taskId: string, step: LeadFlowStep): void {
   const task = tasks.get(taskId)!;
@@ -609,7 +804,13 @@ function askYou(taskId: string, step: Extract<FlowStep, { type: "ask" }>): void 
   const pt = task.locale === "pt-BR";
   const question: AgentQuestion = {
     question: step.note?.trim() || (pt ? "Pausa para você conferir antes de seguir." : "Paused for you to check before going on."),
-    context: pt ? "Continue, ou escreva o que mudar: volta para quem construiu." : "Continue, or write what to change: it goes back to whoever built it.",
+    context: leadOf(task)
+      ? pt
+        ? "Continue, ou escreva o que mudar: mande para quem construiu, ou para o Lead planejar os próximos passos."
+        : "Continue, or write what to change: send it to whoever built it, or to the Lead to plan the next steps."
+      : pt
+        ? "Continue, ou escreva o que mudar: volta para quem construiu."
+        : "Continue, or write what to change: it goes back to whoever built it.",
     options: [CONTINUE[task.locale]],
     suggested: 0,
     gate: true,
@@ -685,7 +886,7 @@ export function answerQuestion(
 ): void {
   const task = tasks.get(taskId);
   if (!task || task.status !== "waiting" || !task.question) throw new FlowError("This task isn't waiting for an answer.");
-  if (task.question.gate) return answerGate(task, answer);
+  if (task.question.gate) return answerGate(task, answer, Boolean(extra.replan));
   if (task.question.planApproval) return answerPlan(task, answer);
   const form = task.question.form;
   const replan = Boolean(form && extra.replan);
@@ -727,7 +928,7 @@ export function answerQuestion(
 }
 
 /** Your reply at an "Ask me" step: its first option continues the flow; anything else is a note for the builder before it. */
-function answerGate(task: Task, answer: string): void {
+function answerGate(task: Task, answer: string, toLead = false): void {
   const taskId = task.id;
   const flow = flowOf(task);
   const gateId = taskState.get(taskId).resumeStep;
@@ -741,6 +942,17 @@ function answerGate(task: Task, answer: string): void {
     node(taskId, gateId!, "done");
     setStatus(taskId, "running", { question: null });
     drive(taskId, (signal) => runFlow(taskId, gate + 1, { kind: "start" }, signal));
+    return;
+  }
+  if (toLead && leadOf(task)) {
+    // Your note goes to the Lead, who decides the next steps.
+    node(taskId, gateId!, "done");
+    nextRound(taskId, true);
+    setStatus(taskId, "running", { question: null });
+    drive(taskId, async (signal) => {
+      const decision = await leadCheckpoint(taskId, gate, { kind: "note", note: answer }, signal);
+      await runFlow(taskId, gate + 1, { kind: "start", brief: decision.brief }, signal);
+    });
     return;
   }
   const back = flow.steps.slice(0, gate).map((s, i) => [s, i] as const).reverse().find(([s]) => isBuilder(task, s));

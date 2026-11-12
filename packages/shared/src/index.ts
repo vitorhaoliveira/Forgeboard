@@ -185,9 +185,25 @@ export interface LeadPlan {
   reasons: Record<string, string>;
   /** How many times you asked for another plan. */
   revisions: number;
+  /** Times the Lead changed course mid-task (a stuck review, your note at a pause). */
+  checkpoints?: number;
+  /** Builder questions the Lead answered or suggested an answer to. */
+  answers?: number;
 }
 
 export const MAX_PLAN_REVISIONS = 5;
+/** At most this many mid-task decisions by the Lead, so a task can't loop forever. */
+export const MAX_LEAD_CHECKPOINTS = 2;
+export const MAX_LEAD_ANSWERS = 3;
+
+/** Where the Lead stepped in during a task. */
+export type CheckpointKind = "stuck" | "question" | "note";
+
+/**
+ * What the Lead decided: one more round, new steps for the rest of the task,
+ * hand it to you, continue as planned, or (for a question) an answer.
+ */
+export type CheckpointAction = "retry" | "replan" | "you" | "continue" | "answer";
 
 /** Problems that stop a flow from running, as message keys with values (the UI translates them). */
 export type FlowProblem =
@@ -414,6 +430,8 @@ export interface AgentQuestion {
   gate?: boolean;
   /** The Lead's plan, waiting for you: the first option approves it, anything else asks for another plan. */
   planApproval?: boolean;
+  /** The Lead's suggested answer to a builder's question ("Ask first" mode, or when it wasn't sure). */
+  leadAnswer?: { by: AgentId; answer: string; why: string };
 }
 
 export interface Task {
@@ -471,6 +489,11 @@ export type RunEventPayload =
   | WithActor<{ type: "steer"; agentId?: AgentId }>
   /** The lead's plan: the steps it picked, with why. */
   | WithActor<{ type: "plan"; summary: string; steps: FlowStep[]; reasons: Record<string, string> }>
+  /**
+   * The Lead stepped in mid-task. With "replan", `steps` replaced the rest of the flow;
+   * with "answer", `answer` went to the builder (`to`) that asked.
+   */
+  | WithActor<{ type: "checkpoint"; kind: CheckpointKind; action: CheckpointAction; why: string; steps?: FlowStep[]; answer?: string; to?: AgentId }>
   /** Decisions Forge made without asking ("decide" mode). */
   | WithActor<{ type: "assumptions"; items: string[] }>
   | WithActor<{ type: "error"; message: string }>;

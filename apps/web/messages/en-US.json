@@ -82,7 +82,11 @@
     "looksGood": "Looks good",
     "correct": "Correct…",
     "gateTitle": "Pause in the flow",
-    "planTitle": "{name} proposes a plan"
+    "planTitle": "{name} proposes a plan",
+    "leadSuggests": "{name} suggests",
+    "useLeadAnswer": "Use this answer",
+    "toLead": "Send to the Lead",
+    "toBuilder": "Send to the builder"
   },
   "form": {
     "formTitle": "{name} has {count, plural, one {# question} other {# questions}}",
@@ -180,7 +184,14 @@
     "planTitle": "{name} planned the team",
     "sendsBackTo": "(sends back to {name})",
     "mergedAccept": "Accepted into your folder",
-    "reviewMergeAccept": "Review & accept"
+    "reviewMergeAccept": "Review & accept",
+    "cpAnswered": "{name} answered {to}",
+    "cpSuggested": "{name} suggests an answer for {to}",
+    "cp_stuck_retry": "{name}: one more round",
+    "cp_stuck_replan": "{name} changed the plan",
+    "cp_stuck_you": "{name} handed it to you",
+    "cp_note_replan": "{name} planned the next steps for your note",
+    "cp_note_continue": "{name}: the planned steps already cover it"
   },
   "decide": {
     "back": "← Desk",

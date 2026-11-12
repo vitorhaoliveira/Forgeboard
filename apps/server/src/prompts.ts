@@ -166,7 +166,14 @@ Commands: you only edit files here (read-only git and ls are fine). There is not
 const FILE_TOOLS_NOTE =
   "Create and change files with your file-editing tools, not with shell redirection or in-place edits (cat >, echo >, tee, sed -i): those commands can be refused, which wastes a step.";
 
-export function forgeStartPrompt(agent: Agent, task: Task, rules: HouseRule[], commands: ForgeCommands = "standard", style: ForgeStyle = DEFAULT_STYLE): string {
+export function forgeStartPrompt(
+  agent: Agent,
+  task: Task,
+  rules: HouseRule[],
+  commands: ForgeCommands = "standard",
+  style: ForgeStyle = DEFAULT_STYLE,
+  brief?: string,
+): string {
   const work = style.work ?? CODE_WORK;
   const note = commands !== "restricted" ? "" : work.kind === "code" ? RESTRICTED_NOTE : FILES_ONLY_NOTE;
   return `${header(agent, "builder", task, rules, work)}
@@ -174,7 +181,7 @@ ${FILE_TOOLS_NOTE}
 ${note}
 Your task:
 ${task.prompt}
-${forgeEnding(style, false)}`;
+${brief ? `\nOthers on the team already worked on this task, in this same folder. Note from the lead, who brought you in:\n${brief}\n` : ""}${forgeEnding(style, false)}`;
 }
 
 export function forgeAnswerPrompt(
@@ -389,12 +396,7 @@ export function leadPrompt(
   work: WorkContext = CODE_WORK,
   canRun = true,
 ): string {
-  const roster = team
-    .map(
-      (m) =>
-        `- id "${m.id}" · ${m.name} · ${m.role === "builder" ? (canRun ? "builds: edits files and runs commands" : "makes: edits files") : "reviews: reads the change, approves it or sends it back"}${m.instructions ? `. Instructions: ${m.instructions}` : ""}`,
-    )
-    .join("\n");
+  const roster = rosterText(team, canRun);
   const pt = task.locale === "pt-BR";
   return `${header(agent, "lead", task, rules, work)}
 
@@ -424,6 +426,165 @@ ${PLAN_MARKER} {"summary": "1-2 sentences for the user", "steps": [{"type": "age
 Write "summary" and every "why" in ${pt ? "Brazilian Portuguese" : "US English"}.`;
 }
 
+function rosterText(team: Teammate[], canRun: boolean): string {
+  return team
+    .map(
+      (m) =>
+        `- id "${m.id}" · ${m.name} · ${m.role === "builder" ? (canRun ? "builds: edits files and runs commands" : "makes: edits files") : "reviews: reads the change, approves it or sends it back"}${m.instructions ? `. Instructions: ${m.instructions}` : ""}`,
+    )
+    .join("\n");
+}
+
+const DECISION_MARKER = "FORGEBOARD_DECISION:";
+const ANSWER_MARKER = "FORGEBOARD_ANSWER:";
+
+/** What happened so far, for the Lead at a checkpoint. */
+export interface CheckpointContext {
+  kind: "stuck" | "note";
+  /** The steps that already ran, as lines ("- Forge: why"). */
+  done: string;
+  /** The steps still planned after this point, as lines (empty when none). */
+  ahead: string;
+  /** "stuck": the reviewer's name, its summary and open issues, and failing checks. */
+  review?: { reviewer: string; summary: string; issues: ReviewIssue[]; failedChecks: string[] };
+  /** "note": what you wrote at the pause. */
+  note?: string;
+  rounds: number;
+}
+
+/**
+ * The Lead decides what happens next mid-task: when a reviewer still asks for changes after
+ * its last round, or when you send it a note at a pause.
+ */
+export function leadCheckpointPrompt(
+  agent: Agent,
+  task: Task,
+  rules: HouseRule[],
+  team: Teammate[],
+  checks: string[],
+  ctx: CheckpointContext,
+  work: WorkContext = CODE_WORK,
+  canRun = true,
+): string {
+  const pt = task.locale === "pt-BR";
+  const situation =
+    ctx.kind === "stuck"
+      ? `${ctx.review!.reviewer} still asks for changes after ${ctx.rounds} round(s), the last one allowed.
+Reviewer summary: ${ctx.review!.summary || "(none)"}
+${ctx.review!.issues.length ? `Open issues:\n${formatIssues(ctx.review!.issues)}\n` : ""}${ctx.review!.failedChecks.length ? `Failing checks: ${ctx.review!.failedChecks.join(", ")}\n` : ""}
+Decide what happens now:
+- "retry": one more round for the builder, when the issues look fixable with one more try;
+- "replan": new steps to run next (for example another builder who knows this area, or a different reviewer), when the current builder is the wrong fit;
+- "you": hand it to the user as it is, when it needs a human decision or more rounds won't help.`
+      : `The user paused the task and wrote: "${ctx.note}"
+Decide what happens now:
+- "replan": new steps to run next that do what the user asked (often a builder, maybe followed by a reviewer);
+- "continue": run the steps still planned, when the note needs no extra work.`;
+  const actions = ctx.kind === "stuck" ? '"retry" | "replan" | "you"' : '"replan" | "continue"';
+  return `${header(agent, "lead", task, rules, work)}
+
+You lead this task and planned who works on it. Now you are asked to decide the next step. You never edit files or run commands; read files only if you need to.
+
+Task:
+${task.prompt}
+
+Your team:
+${rosterText(team, canRun)}
+
+Checks ${work.kind === "code" ? "this repository" : "this folder"} runs: ${checks.length ? checks.join(", ") : "none configured"}.
+
+Steps that ran:
+${ctx.done || "- (none)"}
+${ctx.ahead ? `\nSteps still planned:\n${ctx.ahead}\n` : ""}
+${situation}
+
+With "replan", list only the new steps, in the same format as a plan: builders, {"type": "checks"}, reviewers (with "sendBackTo" a builder's id), at most 5 steps, only the ids above. They replace the steps still planned.
+
+End your answer with exactly one line and nothing after it:
+${DECISION_MARKER} {"action": ${actions}, "why": "one sentence for the user", "steps": [{"type": "agent", "agentId": "...", "why": "..."}]}
+Leave "steps" out unless the action is "replan". Write "why" in ${pt ? "Brazilian Portuguese" : "US English"}.`;
+}
+
+export interface ParsedDecision {
+  action: "retry" | "replan" | "you" | "continue";
+  why: string;
+  /** Raw steps, for parsePlan. */
+  plan: ParsedPlan | null;
+}
+
+/** Reads the Lead's decision line, or null when there is none or the action isn't allowed. */
+export function parseDecision(text: string, allowed: ParsedDecision["action"][], existing: FlowStep[] = []): ParsedDecision | null {
+  const idx = text.lastIndexOf(DECISION_MARKER);
+  if (idx === -1) return null;
+  const raw = text.slice(idx + DECISION_MARKER.length).trim();
+  let data: { action?: unknown; why?: unknown; steps?: unknown };
+  try {
+    data = JSON.parse(raw.slice(0, raw.lastIndexOf("}") + 1));
+  } catch {
+    return null;
+  }
+  const action = data.action as ParsedDecision["action"];
+  if (!allowed.includes(action)) return null;
+  const why = typeof data.why === "string" ? data.why.trim().slice(0, 300) : "";
+  const plan = action === "replan" && Array.isArray(data.steps) ? parsePlanData({ steps: data.steps.slice(0, 5) }, existing) : null;
+  return { action, why, plan };
+}
+
+/**
+ * The Lead reads a builder's question and answers it from the task, the house rules and what the
+ * user said, or says it isn't sure.
+ */
+export function leadAnswerPrompt(
+  agent: Agent,
+  task: Task,
+  rules: HouseRule[],
+  asker: string,
+  question: AgentQuestion,
+  yourWords: string[],
+  work: WorkContext = CODE_WORK,
+): string {
+  const pt = task.locale === "pt-BR";
+  return `${header(agent, "lead", task, rules, work)}
+
+You lead this task. ${asker}, a builder on your team, stopped to ask a question. Answer it if the task, the house rules or what the user said make the answer clear; read files if that helps. Otherwise say you aren't sure: the user will decide.
+
+Task:
+${task.prompt}
+${yourWords.length ? `\nWhat the user said after that, in order:\n${yourWords.map((w) => `- ${w}`).join("\n")}\n` : ""}
+${asker}'s question: ${question.question}
+${question.context ? `Why it matters: ${question.context}\n` : ""}${question.options.length ? `Options: ${question.options.map((o) => `"${o}"`).join(", ")}\n` : ""}
+Be sure only when a wrong answer would not waste real work or surprise the user. Prefer one of the options, word for word.
+
+End your answer with exactly one line and nothing after it:
+${ANSWER_MARKER} {"answer": "...", "sure": true, "why": "one sentence for the user"}
+Write "answer" and "why" in ${pt ? "Brazilian Portuguese" : "US English"}.`;
+}
+
+export interface ParsedLeadAnswer {
+  answer: string;
+  sure: boolean;
+  why: string;
+}
+
+export function parseLeadAnswer(text: string): ParsedLeadAnswer | null {
+  const idx = text.lastIndexOf(ANSWER_MARKER);
+  if (idx === -1) return null;
+  const raw = text.slice(idx + ANSWER_MARKER.length).trim();
+  try {
+    const d = JSON.parse(raw.slice(0, raw.lastIndexOf("}") + 1)) as { answer?: unknown; sure?: unknown; why?: unknown };
+    if (typeof d.answer !== "string" || !d.answer.trim()) return null;
+    return { answer: d.answer.trim().slice(0, 500), sure: d.sure === true, why: typeof d.why === "string" ? d.why.trim().slice(0, 300) : "" };
+  } catch {
+    return null;
+  }
+}
+
+/** The Lead's message without its decision or answer line. */
+export function stripLeadLine(text: string): string {
+  const idx = Math.max(text.lastIndexOf(DECISION_MARKER), text.lastIndexOf(ANSWER_MARKER));
+  return (idx === -1 ? text : text.slice(0, idx)).trim();
+}
+
 export interface ParsedPlan {
   summary: string;
   steps: FlowStep[];
@@ -442,8 +603,16 @@ export function parsePlan(text: string): ParsedPlan | null {
     return null;
   }
   if (!data || typeof data !== "object" || !Array.isArray((data as { steps?: unknown }).steps)) return null;
-  const { summary, steps: rawSteps } = data as { summary?: unknown; steps: unknown[] };
-  const used = new Set<string>();
+  return parsePlanData(data as { summary?: unknown; steps: unknown[] });
+}
+
+/**
+ * Turns plan steps into flow steps with ids. `existing` are steps already in the flow: new ids
+ * don't clash with them, and "sendBackTo" can name a builder among them.
+ */
+function parsePlanData(data: { summary?: unknown; steps: unknown[] }, existing: FlowStep[] = []): ParsedPlan {
+  const { summary, steps: rawSteps } = data;
+  const used = new Set<string>(existing.map((s) => s.id));
   const idFor = (base: string) => {
     let id = base;
     for (let n = 2; used.has(id); n++) id = `${base}-${n}`;
@@ -460,7 +629,7 @@ export function parsePlan(text: string): ParsedPlan | null {
     if (o.type === "agent" && typeof o.agentId === "string") {
       const maxRounds = typeof o.maxRounds === "number" && Number.isInteger(o.maxRounds) ? Math.min(5, Math.max(1, o.maxRounds)) : undefined;
       // "sendBackTo" names an agent: the last step of that agent so far.
-      const target = typeof o.sendBackTo === "string" ? [...steps].reverse().find((s) => s.type === "agent" && s.agentId === o.sendBackTo) : undefined;
+      const target = typeof o.sendBackTo === "string" ? [...existing, ...steps].reverse().find((s) => s.type === "agent" && s.agentId === o.sendBackTo) : undefined;
       step = { id: idFor(o.agentId), type: "agent", agentId: o.agentId, ...(maxRounds ? { maxRounds } : {}), ...(target ? { sendBackTo: target.id } : {}) };
     } else if (o.type === "checks") {
       step = { id: idFor("checks"), type: "checks" };

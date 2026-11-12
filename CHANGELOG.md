@@ -2,6 +2,23 @@
 
 All notable changes to Forgeboard are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.5.0] — 2026-11-12
+
+Lead checkpoints: the Lead steps in when a task gets stuck, a builder asks, or you change course.
+
+### Added
+
+- **When a review gets stuck.** In a task the Lead planned, a reviewer that still asks for changes after its last round no longer goes straight to you: the Lead decides between **one more round**, **new steps** (for example another builder, or a different reviewer) or **handing it to you**, with a line on why.
+- **When a builder asks.** The Lead reads a builder's plain question with the task, the house rules and what you said:
+  - in *Decide and tell me*, when it is sure, it answers and the builder goes on;
+  - otherwise the question comes to you with **the Lead's suggestion** and a "Use this answer" button.
+
+  Forms and plans always come to you.
+- **When you change course at a pause.** An "Ask me" pause in a task the Lead planned has **Send to the Lead** next to "Send to the builder": the Lead plans the next steps for your note ("now also translate it"), or says the planned steps already cover it.
+- The run shows each decision in the conversation, and new steps appear in the graph.
+- Limits, so a task can't loop: at most 2 mid-task decisions and 3 answers by the Lead per task.
+- API: `replan: true` on an answer to an "Ask me" pause sends the note to the Lead; new run event `checkpoint`; `leadAnswer` on questions.
+
 ## [2.4.0] — 2026-11-12
 
 Any kind of work: teams for docs, content, research, data and translation, in any folder.

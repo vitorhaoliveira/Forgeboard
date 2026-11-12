@@ -1,6 +1,6 @@
 # v3 — Teams: a Lead, ready-made teams, any kind of work
 
-Status: the Lead (Phase A) shipped in v2.2.0, teams and code templates in v2.3.0, any kind of work in v2.4.0. Lead checkpoints (Phase B) and the rest of v2.5+ are next.
+Status: the Lead (Phase A) shipped in v2.2.0, teams and code templates in v2.3.0, any kind of work in v2.4.0, Lead checkpoints (Phase B) in v2.5.0. The drag-and-drop canvas and parallel steps are next.
 
 ## The idea in three lines
 
@@ -155,6 +155,6 @@ House rules work the same way: "Write in a friendly tone, no jargon" is as valid
 
 1. **Order:** Lead first (v2.2), as proposed, or teams and templates first?
 2. **Name in Portuguese:** "Equipe" (as today) or "Time"?
-3. **May the Lead answer a maker's questions** in *Decide and tell me* (Phase B), or should questions always come to you?
+3. **May the Lead answer a maker's questions** in *Decide and tell me* (Phase B), or should questions always come to you? Shipped in v2.5: it answers when it is sure; otherwise it suggests and you decide.
 4. **Templates:** is this first set right? Anything missing for your own use?
 5. **Folders without git:** is "Start tracking this folder" (creates a `.git`) fine, or do you need the hidden-repository option from the start?

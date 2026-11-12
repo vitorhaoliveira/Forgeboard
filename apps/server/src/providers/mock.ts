@@ -46,7 +46,31 @@ export const mockProvider: Provider = {
     let steps: Step[];
     let text: string;
 
-    if (input.role === "lead") {
+    if (input.role === "lead" && input.prompt.includes("FORGEBOARD_ANSWER:")) {
+      // Answers a builder's question with its first option.
+      const option = /^Options: "([^"]+)"/m.exec(input.prompt)?.[1] ?? t(locale, "Go with the simplest option", "Siga com a opção mais simples");
+      steps = [[500, { type: "text", text: t(locale, "The task makes this clear.", "A tarefa deixa isso claro.") }]];
+      text = `${t(locale, "Answering for the team.", "Respondendo pelo time.")}\nFORGEBOARD_ANSWER: ${JSON.stringify({ answer: option, sure: true, why: t(locale, "It's what the task asks for.", "É o que a tarefa pede.") })}`;
+    } else if (input.role === "lead" && input.prompt.includes("FORGEBOARD_DECISION:")) {
+      // Stuck review: one more round, or new steps when the task says [mock-replan]. A note: new steps.
+      const roster = [...input.prompt.matchAll(/^- id "([^"]+)" · [^·]+ · (builds|makes|reviews)/gm)];
+      const maker = roster.find((m) => m[2] !== "reviews")?.[1] ?? "forge";
+      const reviewer = roster.find((m) => m[2] === "reviews")?.[1];
+      const stuck = input.prompt.includes("still asks for changes");
+      const replan = !stuck || input.prompt.includes("[mock-replan]");
+      steps = [[600, { type: "text", text: t(locale, "Looking at where the task stands.", "Vendo em que pé a tarefa está.") }]];
+      const decision = replan
+        ? {
+            action: "replan",
+            why: stuck ? t(locale, "A fresh pair of hands for the open issues.", "Mãos novas para os problemas em aberto.") : t(locale, "Your note needs one more change.", "Sua observação pede mais uma mudança."),
+            steps: [
+              { type: "agent", agentId: maker, why: t(locale, "Makes the change.", "Faz a mudança.") },
+              ...(reviewer ? [{ type: "agent", agentId: reviewer, sendBackTo: maker, why: t(locale, "Checks it.", "Confere.") }] : []),
+            ],
+          }
+        : { action: "retry", why: t(locale, "The issues are small: one more round should do it.", "Os problemas são pequenos: mais uma rodada resolve.") };
+      text = `${decision.why}\nFORGEBOARD_DECISION: ${JSON.stringify(decision)}`;
+    } else if (input.role === "lead") {
       // The lead reads the task and picks Forge, the checks and Hawk (Hawk only after a note asking for less).
       steps = [
         [500, { type: "text", text: t(locale, "Reading the task and the team.", "Lendo a tarefa e o time.") }],
@@ -65,6 +89,7 @@ export const mockProvider: Provider = {
         steps: [
           { type: "agent", agentId: maker, why: t(locale, "Writes the change.", "Escreve a mudança.") },
           { type: "checks", why: t(locale, "The repository has checks.", "O repositório tem verificações.") },
+          ...(input.prompt.includes("[mock-pause]") ? [{ type: "ask", note: t(locale, "Check the draft", "Confira o rascunho"), why: t(locale, "You should see it first.", "Você deve ver antes.") }] : []),
           ...(lean || !reviewer ? [] : [{ type: "agent", agentId: reviewer, why: t(locale, "A second look before you merge.", "Uma segunda olhada antes do merge.") }]),
         ],
       };
@@ -94,7 +119,7 @@ export const mockProvider: Provider = {
             ],
           };
       text = `${verdict.summary}\n\n\`\`\`json\n${JSON.stringify(verdict, null, 2)}\n\`\`\``;
-    } else if (round === 1 && !input.resumeSession && !decide) {
+    } else if (round === 1 && !input.resumeSession && (!decide || input.prompt.includes("[mock-ask]"))) {
       // First step of Forge: explore, then ask a question.
       steps = [
         [500, { type: "text", text: t(locale, "Let me look at the project first.", "Deixa eu olhar o projeto primeiro.") }],

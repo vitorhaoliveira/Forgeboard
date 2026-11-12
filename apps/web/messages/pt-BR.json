@@ -82,7 +82,11 @@
     "looksGood": "Está ótimo",
     "correct": "Corrigir…",
     "gateTitle": "Pausa no fluxo",
-    "planTitle": "{name} propõe um plano"
+    "planTitle": "{name} propõe um plano",
+    "leadSuggests": "{name} sugere",
+    "useLeadAnswer": "Usar esta resposta",
+    "toLead": "Mandar para o Lead",
+    "toBuilder": "Mandar para quem construiu"
   },
   "form": {
     "formTitle": "{name} tem {count, plural, one {# pergunta} other {# perguntas}}",
@@ -180,7 +184,14 @@
     "planTitle": "{name} montou o time",
     "sendsBackTo": "(devolve para {name})",
     "mergedAccept": "Aceito na sua pasta",
-    "reviewMergeAccept": "Revisar e aceitar"
+    "reviewMergeAccept": "Revisar e aceitar",
+    "cpAnswered": "{name} respondeu ao {to}",
+    "cpSuggested": "{name} sugere uma resposta para o {to}",
+    "cp_stuck_retry": "{name}: mais uma rodada",
+    "cp_stuck_replan": "{name} mudou o plano",
+    "cp_stuck_you": "{name} passou para você",
+    "cp_note_replan": "{name} planejou os próximos passos para a sua observação",
+    "cp_note_continue": "{name}: os passos planejados já cobrem isso"
   },
   "decide": {
     "back": "← Mesa",
