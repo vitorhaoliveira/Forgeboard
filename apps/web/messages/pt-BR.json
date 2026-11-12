@@ -32,7 +32,8 @@
     "merged": "Merge feito",
     "discarded": "Descartado",
     "cancelled": "Parado",
-    "error": "Erro"
+    "error": "Erro",
+    "accepted": "Aceito"
   },
   "actors": {
     "checks": "Verificações",
@@ -40,9 +41,9 @@
     "system": "Forgeboard"
   },
   "repo": {
-    "add": "Adicionar repositório",
+    "add": "Adicionar pasta",
     "addPlaceholder": "/Users/voce/projetos/meu-app",
-    "addHint": "Qualquer repositório git com pelo menos um commit."
+    "addHint": "Um repositório de código ou qualquer pasta de arquivos: se ainda não for acompanhada, você pode começar a acompanhar."
   },
   "composer": {
     "label": "Diga ao seu time o que fazer",
@@ -50,7 +51,7 @@
     "start": "Começar",
     "needsRepo": "Crie um workspace primeiro",
     "destination": "Onde a tarefa roda",
-    "noRepos": "Adicione um repositório a este workspace primeiro",
+    "noRepos": "Adicione uma pasta a este workspace primeiro",
     "placeholderWs": "Diga ao time de {name} o que fazer…",
     "flow": "Fluxo"
   },
@@ -114,7 +115,9 @@
     "risk": "{level, select, low {Risco baixo} medium {Risco médio} high {Risco alto} other {Risco desconhecido}}",
     "merge": "Fazer merge na {branch}",
     "lookCloser": "Ver detalhes",
-    "checksPassed": "{passed}/{total} verificações passaram"
+    "checksPassed": "{passed}/{total} verificações passaram",
+    "readyAccept": "Pronto para aceitar",
+    "mergeAccept": "Aceitar"
   },
   "flow": {
     "name": "Construir e revisar",
@@ -133,7 +136,11 @@
     "ask": "Me pergunte",
     "roleAsk": "pausa para conferir",
     "roleLead": "monta o time",
-    "leadName": "Lead decide"
+    "leadName": "Lead decide",
+    "mergeAccept": "Aceitar",
+    "roleMergeAccept": "na sua pasta",
+    "roleMaker": "escreve",
+    "roleChecksAny": "seus comandos"
   },
   "run": {
     "stop": "Parar",
@@ -171,7 +178,9 @@
     "decidedHint": "Responda aqui se quiser mudar algo.",
     "messagesOnly": "Só mensagens",
     "planTitle": "{name} montou o time",
-    "sendsBackTo": "(devolve para {name})"
+    "sendsBackTo": "(devolve para {name})",
+    "mergedAccept": "Aceito na sua pasta",
+    "reviewMergeAccept": "Revisar e aceitar"
   },
   "decide": {
     "back": "← Mesa",
@@ -198,7 +207,13 @@
     "merge": "{count, plural, =0 {Nada para fazer merge} one {Fazer merge de # arquivo na {branch}} other {Fazer merge de # arquivos na {branch}}}",
     "merging": "Fazendo merge…",
     "notReady": "Esta tarefa está: {status}.",
-    "openRun": "Abrir a execução"
+    "openRun": "Abrir a execução",
+    "mergeAccept": "{count, plural, =0 {Nada para aceitar} one {Aceitar # arquivo} other {Aceitar # arquivos}}",
+    "mergingAccept": "Aceitando…",
+    "filesHintAccept": "Desmarque um arquivo para deixá-lo de fora",
+    "howWeKnowAccept": "COMO CONFERIMOS",
+    "preview": "Prévia",
+    "changes": "Mudanças"
   },
   "crew": {
     "title": "Time padrão",
@@ -234,7 +249,8 @@
     "newAgentFlows": "Para colocar para trabalhar, adicione a um fluxo em Fluxos.",
     "create": "Criar agente",
     "confirmDelete": "Excluir {name}",
-    "roleLead": "Lead · lê cada tarefa e escolhe quem trabalha nela"
+    "roleLead": "Lead · lê cada tarefa e escolhe quem trabalha nela",
+    "roleMaker": "Construtor · só edita arquivos"
   },
   "settings": {
     "title": "Configurações",
@@ -262,7 +278,7 @@
   },
   "runs": {
     "title": "Execuções",
-    "empty": "Nenhuma execução neste repositório ainda.",
+    "empty": "Nenhuma execução nesta pasta ainda.",
     "task": "Tarefa",
     "status": "Status",
     "cost": "Custo",
@@ -332,7 +348,7 @@
     "allShort": "Todos",
     "create": "Criar workspace",
     "tileLabel": "{name}, {count, plural, =0 {nada esperando} one {# esperando por você} other {# esperando por você}}",
-    "repoCount": "{count, plural, one {# repositório} other {# repositórios}}",
+    "repoCount": "{count, plural, one {# pasta} other {# pastas}}",
     "crewDefault": "time padrão",
     "crewCustom": "time próprio",
     "waiting": "{count} esperando",
@@ -340,21 +356,21 @@
     "upToDate": "em dia",
     "idle": "nada rodando",
     "configure": "Configurar",
-    "allRepos": "Todos os repos",
-    "filterByRepo": "Filtrar por repositório",
-    "repos": "REPOSITÓRIOS",
+    "allRepos": "Todas as pastas",
+    "filterByRepo": "Filtrar por pasta",
+    "repos": "PASTAS",
     "crew": "TIME DESTE WORKSPACE",
     "rules": "Regras da casa",
-    "rulesSummary": "{ws} do workspace · {repo} dos repos",
+    "rulesSummary": "{ws} do workspace · {repo} das pastas",
     "noChecks": "Nenhuma verificação configurada",
     "default": "padrão",
     "custom": "personalizado",
     "headlineAll": "{count, plural, one {# coisa esperando por você} other {# coisas esperando por você}} em {ws, plural, one {# workspace} other {# workspaces}}",
     "colorHint": "A cor indica o workspace. Clique em um workspace na barra lateral para ver só ele.",
     "noWorkspacesTitle": "Crie seu primeiro workspace",
-    "noWorkspacesBody": "Um workspace agrupa os repositórios de um projeto, com time e regras da casa próprios. Suas branches ficam intactas até você fazer o merge.",
-    "emptyRepos": "Este workspace ainda não tem repositórios.",
-    "addRepoHere": "Adicionar repositório",
+    "noWorkspacesBody": "Um workspace agrupa as pastas de um projeto (repositórios de código, documentos, o que for), com time e regras da casa próprios. Seus arquivos ficam intactos até você aceitar as mudanças.",
+    "emptyRepos": "Este workspace ainda não tem pastas.",
+    "addRepoHere": "Adicionar pasta",
     "notFound": "Workspace não encontrado."
   },
   "newWs": {
@@ -371,11 +387,11 @@
       "pink": "Rosa",
       "warning": "Amarelo"
     },
-    "repos": "REPOSITÓRIOS",
+    "repos": "PASTAS",
     "repoPlaceholder": "~/projetos/meu-app",
     "add": "Adicionar",
     "remove": "Remover {name}",
-    "reposHint": "Você também pode adicionar repositórios depois.",
+    "reposHint": "Um repositório de código ou qualquer pasta de arquivos. Você também pode adicionar pastas depois.",
     "crew": "TIME",
     "crewDefault": "Time padrão",
     "crewDefaultHint": "Forge e Hawk como estão hoje. Dá para personalizar depois.",
@@ -393,24 +409,24 @@
     "title": "Configurar workspace",
     "back": "← {name}",
     "general": "Geral",
-    "repos": "Repositórios",
+    "repos": "Pastas",
     "crew": "Time",
     "rules": "Regras da casa",
     "danger": "Arquivar ou excluir",
     "save": "Salvar alterações",
-    "addRepo": "Adicionar repositório",
+    "addRepo": "Adicionar pasta",
     "checks": "Verificações",
     "noChecks": "sem verificações",
     "moveTo": "Mover {repo} para outro workspace",
     "removeRepo": "Remover",
-    "repoHint": "Um repositório pertence a um workspace só. Movê-lo mantém o histórico.",
+    "repoHint": "Uma pasta pertence a um workspace só. Movê-la mantém o histórico.",
     "removeRepoConfirm": "Remover {repo} do Forgeboard? As tarefas dele são removidas; a pasta não é tocada.",
     "crewDefault": "Usar o time padrão",
     "crewDefaultHint": "Mudanças no time padrão valem aqui também.",
     "crewCustom": "Time próprio de {name}",
     "crewCustomHint": "Ajuste cada agente só para este workspace.",
     "resetAgent": "Voltar ao padrão",
-    "rulesHint": "Regras do workspace valem para todos os repositórios dele. Regras de um repositório valem só para ele.",
+    "rulesHint": "Regras do workspace valem para todas as pastas dele. Regras de uma pasta valem só para ela.",
     "rulesWorkspace": "Workspace",
     "addRuleFor": "Escreva uma regra para {target}…",
     "moveToWorkspace": "mover para o workspace",
@@ -420,8 +436,8 @@
     "archive": "Arquivar",
     "unarchive": "Desarquivar",
     "delete": "Excluir workspace",
-    "deleteConfirm": "Excluir \"{name}\"? As tarefas e regras dele são removidas; seus repositórios no disco não são tocados.",
-    "dangerHint": "Arquivar esconde o workspace e mantém o histórico. Excluir remove tarefas e regras; seus repositórios não são tocados.",
+    "deleteConfirm": "Excluir \"{name}\"? As tarefas e regras dele são removidas; suas pastas no disco não são tocadas.",
+    "dangerHint": "Arquivar esconde o workspace e mantém o histórico. Excluir remove tarefas e regras; suas pastas não são tocadas.",
     "safety": "Segurança",
     "forgeCommands": "O que o {name} pode rodar",
     "cmdStandard": "Padrão",
@@ -472,20 +488,22 @@
   },
   "folders": {
     "choose": "Escolher pasta…",
-    "title": "Escolha um repositório",
+    "title": "Escolha uma pasta",
     "home": "Início",
     "up": "Subir uma pasta",
     "location": "Local",
     "folders": "Pastas",
     "empty": "Nenhuma pasta aqui.",
-    "repo": "repositório git",
+    "repo": "acompanhada",
     "added": "já adicionado",
     "pick": "Escolher",
-    "hereRepo": "Esta pasta é um repositório git.",
-    "hereAdded": "Este repositório já pertence a um workspace.",
-    "reposHere": "{count, plural, one {# repositório aqui: passe o mouse para escolher, ou abra.} other {# repositórios aqui: passe o mouse em um para escolher, ou abra.}}",
-    "notRepo": "Abra a pasta de um repositório git para escolher.",
-    "pickThis": "Escolher esta pasta"
+    "hereRepo": "Esta pasta é acompanhada e está pronta para usar.",
+    "hereAdded": "Esta pasta já pertence a um workspace.",
+    "reposHere": "{count, plural, one {# pasta acompanhada aqui: passe o mouse para escolher, ou abra.} other {# pastas acompanhadas aqui: passe o mouse em uma para escolher, ou abra.}}",
+    "notRepo": "Esta pasta ainda não é acompanhada. Começar a acompanhar cria uma pasta oculta .git com uma primeira cópia; nada mais muda.",
+    "pickThis": "Escolher esta pasta",
+    "track": "Começar a acompanhar esta pasta",
+    "tracking": "Começando…"
   },
   "teams": {
     "title": "Times",
@@ -506,6 +524,25 @@
     "usedBy": "Usado por {names}.",
     "unused": "Nenhum workspace usa este time ainda: escolha ele nas configurações de um workspace.",
     "delete": "Excluir time",
-    "confirmDelete": "Excluir time (os workspaces voltam para o time padrão)"
+    "confirmDelete": "Excluir time (os workspaces voltam para o time padrão)",
+    "forCode": "Para código",
+    "forOther": "Para outros trabalhos",
+    "kind": "No que trabalha",
+    "kindHint": "Muda as palavras usadas (escrever ou construir, aceitar ou fazer merge) e o que os agentes ouvem.",
+    "kinds": {
+      "code": "Código",
+      "writing": "Escrita",
+      "research": "Pesquisa",
+      "data": "Dados",
+      "other": "Outro"
+    },
+    "about": "Sobre este time",
+    "aboutPlaceholder": "ex.: Artigos de ajuda de um app de agendamento, escritos para donos de pequenos negócios.",
+    "aboutHint": "Todos os membros ouvem isso, em toda tarefa.",
+    "commands": "O que os construtores podem rodar",
+    "cmdRestricted": "Só arquivos",
+    "cmdRestrictedHint": "Editam arquivos e nada mais. Ideal para documentos, pesquisa e tradução.",
+    "cmdStandard": "Arquivos e comandos",
+    "cmdStandardHint": "Também rodam npm, pnpm, yarn, bun, npx e node (e Python, em times de dados) para instalar e testar. Um workspace em Restrito continua valendo."
   }
 }

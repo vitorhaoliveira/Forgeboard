@@ -7,6 +7,7 @@ import { sendBackIndex, stepActor, type RoleOf } from "@/lib/flow-view";
 import type { HandBack, NodeStates } from "@/lib/run-model";
 import { cn } from "@/lib/utils";
 import { Glyph, useActorName } from "./glyph";
+import { useAcceptWords } from "@/lib/app-state";
 
 const STEP = 176;
 const NODE_W = 140;
@@ -49,6 +50,7 @@ type GraphNode = { id: string; step?: FlowStep };
 
 /** A flow as a graph: your task, its steps, then you and the merge. Nodes light up as the run moves. */
 export function FlowGraph({ flow, roleOf, states, notes = {}, defaultRounds = 3, handBack, round = 0, selected, onSelect }: FlowGraphProps) {
+  const accept = useAcceptWords();
   const t = useTranslations("flow");
   const name = useActorName();
 
@@ -79,14 +81,15 @@ export function FlowGraph({ flow, roleOf, states, notes = {}, defaultRounds = 3,
   const top = 22 + loops.length * LOOP_LEVEL + (loops.length ? 20 : 0);
 
   const label = (n: GraphNode) => {
+    if (n.id === "merge" && accept) return t("mergeAccept");
     if (!n.step) return t(n.id as "task" | "you" | "merge");
     return n.step.type === "agent" || n.step.type === "lead" ? name(n.step.agentId) : n.step.type === "checks" ? t("checks") : t("ask");
   };
   const role = (n: GraphNode) => {
-    if (!n.step) return n.id === "task" ? t("roleTask") : n.id === "you" ? t("roleYou") : t("roleMerge");
+    if (!n.step) return n.id === "task" ? t("roleTask") : n.id === "you" ? t("roleYou") : t(accept ? "roleMergeAccept" : "roleMerge");
     if (n.step.type === "lead") return t("roleLead");
-    if (n.step.type === "agent") return roleOf(n.step.agentId) === "reviewer" ? t("roleHawk") : t("roleForge");
-    return n.step.type === "checks" ? t("roleChecks") : t("roleAsk");
+    if (n.step.type === "agent") return roleOf(n.step.agentId) === "reviewer" ? t("roleHawk") : t(accept ? "roleMaker" : "roleForge");
+    return n.step.type === "checks" ? t(accept ? "roleChecksAny" : "roleChecks") : t("roleAsk");
   };
   const icon = (n: GraphNode) => {
     if (n.step?.type === "agent" || n.step?.type === "lead") return <Glyph actor={n.step.agentId} />;

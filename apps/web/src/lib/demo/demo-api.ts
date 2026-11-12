@@ -27,7 +27,7 @@ import type {
   Verdict,
   Workspace,
 } from "@forgeboard/shared";
-import { BUILD_AND_REVIEW, LEAD_DECIDES, TEAM_TEMPLATES, templateMembers } from "@forgeboard/shared";
+import { BUILD_AND_REVIEW, isDocument, LEAD_DECIDES, TEAM_TEMPLATES, templateMembers } from "@forgeboard/shared";
 import type { Api, StreamHandlers } from "../api";
 import { sanitizeAnswer } from "@forgeboard/shared/a2ui";
 import {
@@ -592,6 +592,8 @@ export const demoApi: Api = {
           };
     return ok(listing);
   },
+  // The demo's folders are made up: "tracking" one only marks it.
+  trackFolder: (path) => ok({ path }),
   teams: () => ok(s().teams),
   createTeam: (input) => {
     const st = s();
@@ -601,6 +603,8 @@ export const demoApi: Api = {
       name: input.name,
       description: input.description ?? "",
       planning: tpl?.planning ?? BUILD_AND_REVIEW.id,
+      kind: tpl?.kind ?? "code",
+      commands: tpl?.commands ?? "standard",
       members: tpl ? templateMembers(tpl, input.locale) : clone(st.defaults).map(({ builtIn: _b, customized: _c, ...a }) => a),
       ...(tpl ? { templateId: tpl.id } : {}),
       createdAt: iso(Date.now()),
@@ -705,7 +709,15 @@ export const demoApi: Api = {
     play(task.id, runSteps(task.id, c, intro));
     return ok(task);
   },
-  diff: (taskId) => ok(s().diffs.get(taskId) ?? []),
+  // New documents can be previewed: their text is the added lines of the patch.
+  diff: (taskId) =>
+    ok(
+      (s().diffs.get(taskId) ?? []).map((f) =>
+        f.status === "added" && isDocument(f.path) && f.preview === undefined
+          ? { ...f, preview: f.patch.split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++")).map((l) => l.slice(1)).join("\n") }
+          : f,
+      ),
+    ),
   answer: (taskId, text, remember, extra) => {
     const st = s();
     const task = st.tasks.find((t) => t.id === taskId);

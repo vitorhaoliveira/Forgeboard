@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { nanoid } from "nanoid";
 import { compileForm, sanitizeAnswer, validateUi } from "@forgeboard/shared/a2ui";
-import { BUILD_AND_REVIEW, MAX_PLAN_REVISIONS, validateFlow } from "@forgeboard/shared";
+import { BUILD_AND_REVIEW, isDocument, MAX_PLAN_REVISIONS, validateFlow } from "@forgeboard/shared";
 import type {
   Actor,
   Agent,
@@ -24,7 +24,7 @@ import type {
 import { bus } from "./bus.js";
 import { runChecks } from "./checks.js";
 import { config } from "./config.js";
-import { agents, events, repos, rules, tasks, taskState, workspaces } from "./db.js";
+import { agents, events, repos, rules, tasks, taskState, teams, workspaces } from "./db.js";
 import * as git from "./git.js";
 import {
   forgeAnswerPrompt,
@@ -42,6 +42,7 @@ import {
   parseQuestion,
   parseVerdict,
   stripQuestion,
+  type WorkContext,
 } from "./prompts.js";
 import { getProvider } from "./providers/index.js";
 import { AbortedError, type AgentActivity } from "./providers/types.js";
@@ -52,6 +53,8 @@ import { AbortedError, type AgentActivity } from "./providers/types.js";
  */
 const READ_ONLY_COMMANDS = ["ls", "git status", "git diff", "git log"];
 const PACKAGE_COMMANDS = ["npm", "pnpm", "yarn", "bun", "npx", "node"];
+/** Data teams in Standard also run Python, to analyze and chart. */
+const PYTHON_COMMANDS = ["python", "python3", "pip", "pip3", "uv", "jupyter"];
 const asTools = (cmds: string[]) => cmds.flatMap((cmd) => [`Bash(${cmd})`, `Bash(${cmd} *)`]);
 
 /** Shell commands builders may run, by the workspace's setting. File edits are always allowed. */
@@ -139,9 +142,27 @@ function takeInbox(taskId: string): string[] {
   return list;
 }
 
+/** The team a workspace uses, when it uses one of yours. */
+function teamOf(workspaceId: string) {
+  const ws = workspaces.get(workspaceId);
+  return ws?.crewMode === "team" && ws.teamId ? teams.get(ws.teamId) : undefined;
+}
+
+/** What the workspace's team works on. Without a team, it is code. */
+function workFor(workspaceId: string): WorkContext {
+  const team = teamOf(workspaceId);
+  return { kind: team?.kind ?? "code", about: team?.about ?? "" };
+}
+
+/** What builders may run: "restricted" when the workspace or its team says so. */
+function commandsFor(workspaceId: string): ForgeCommands {
+  const ws = workspaces.get(workspaceId);
+  return ws?.forgeCommands === "restricted" || teamOf(workspaceId)?.commands === "restricted" ? "restricted" : "standard";
+}
+
 function styleFor(workspaceId: string): ForgeStyle {
   const ws = workspaces.get(workspaceId);
-  return { askMode: ws?.askMode ?? "ask", planFirst: ws?.planFirst ?? true };
+  return { askMode: ws?.askMode ?? "ask", planFirst: ws?.planFirst ?? true, work: workFor(workspaceId) };
 }
 
 /** The flow a task runs. Tasks from before v2.0 have none: they ran Build & Review. */
@@ -205,7 +226,7 @@ async function builderStep(taskId: string, step: AgentStep, mode: BuilderMode, s
   const { worktree } = requireWorktree(taskId);
   const agent = agents.forStep(task.workspaceId, step.agentId);
   const repoRules = rules.forRepo(repos.get(task.repoId)!);
-  const commands: ForgeCommands = workspaces.get(task.workspaceId)?.forgeCommands ?? "standard";
+  const commands = commandsFor(task.workspaceId);
   const style = styleFor(task.workspaceId);
   const messages = takeInbox(taskId);
 
@@ -234,7 +255,7 @@ async function builderStep(taskId: string, step: AgentStep, mode: BuilderMode, s
       prompt,
       cwd: worktree,
       permissionMode: "acceptEdits",
-      allowedTools: BUILDER_ALLOWED_TOOLS[commands],
+      allowedTools: [...BUILDER_ALLOWED_TOOLS[commands], ...(commands === "standard" && style.work?.kind === "data" ? asTools(PYTHON_COMMANDS) : [])],
       commands,
       // Keep the same conversation across rounds so the agent remembers its work.
       resumeSession: mode.kind === "start" ? undefined : sessionOf(taskId, step.id),
@@ -336,7 +357,7 @@ async function reviewerStep(
     const diffText = files.map((f) => f.patch).join("");
     const output = await getProvider(agent.provider).run({
       role: "reviewer",
-      prompt: hawkPrompt(agent, task, rules.forRepo(repos.get(task.repoId)!), diffText, checks, yourWords(taskId)),
+      prompt: hawkPrompt(agent, task, rules.forRepo(repos.get(task.repoId)!), diffText, checks, yourWords(taskId), workFor(task.workspaceId)),
       cwd: worktree,
       permissionMode: "plan",
       // Plan mode alone doesn't stop the model from running commands (it ran `npm test`).
@@ -499,6 +520,8 @@ async function leadStep(taskId: string, step: LeadFlowStep, replan: { note: stri
       team.map((a) => ({ id: a.id, name: a.name, role: a.role, instructions: a.instructions })),
       repo.checks.map((c) => c.name),
       replan ? { note: replan.note, previous } : undefined,
+      workFor(task.workspaceId),
+      commandsFor(task.workspaceId) === "standard",
     ),
     cwd: worktree,
     // A lead only reads, like a reviewer.
@@ -809,5 +832,5 @@ export function stopTask(taskId: string): boolean {
 export async function taskDiff(taskId: string) {
   const state = taskState.get(taskId);
   if (!state.worktreePath || !state.baseSha) return [];
-  return git.diff(state.worktreePath, state.baseSha);
+  return git.withPreviews(state.worktreePath, await git.diff(state.worktreePath, state.baseSha), isDocument);
 }

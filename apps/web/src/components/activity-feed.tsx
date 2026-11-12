@@ -25,6 +25,7 @@ import { cleanAgentText } from "@/lib/run-model";
 import { cn, formatDuration, relativePath } from "@/lib/utils";
 import { Glyph, useActorName } from "./glyph";
 import { Chip } from "./ui";
+import { useAcceptWords } from "@/lib/app-state";
 
 type ToolUse = Extract<RunEvent, { type: "tool_use" }>;
 type ToolResult = Extract<RunEvent, { type: "tool_result" }>;
@@ -248,6 +249,7 @@ export function PlanSteps({ steps, reasons }: { steps: FlowStep[]; reasons: Reco
 }
 
 function EventItem({ event, form }: { event: RunEvent; form?: AgentForm }) {
+  const accept = useAcceptWords();
   const t = useTranslations("run");
   const tf = useTranslations("flow");
   const tForm = useTranslations("form");
@@ -394,7 +396,7 @@ function EventItem({ event, form }: { event: RunEvent; form?: AgentForm }) {
       return (
         <div className="flex items-center gap-2 rounded-[10px] border border-success/30 bg-success/5 px-3 py-2.5 text-[13px] text-success">
           <CheckCircle2 className="size-4" aria-hidden="true" />
-          {t("merged", { branch: event.branch })}
+          {accept ? t("mergedAccept") : t("merged", { branch: event.branch })}
         </div>
       );
     case "error":

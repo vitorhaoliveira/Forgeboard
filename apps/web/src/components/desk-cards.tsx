@@ -12,7 +12,7 @@ import { api } from "@/lib/api";
 import { stepGlyph } from "@/lib/flow-view";
 import { PlanSteps } from "./activity-feed";
 import { useTaskAgents } from "@/lib/use-task-agents";
-import { useAppState, WorkspaceScope } from "@/lib/app-state";
+import { useAcceptWords, useAppState, WorkspaceScope } from "@/lib/app-state";
 import { cn, formatCost, timeAgo } from "@/lib/utils";
 import { Glyph } from "./glyph";
 import { StatusDot } from "./status-chip";
@@ -240,6 +240,7 @@ export function ReviewCard({ task, showRepo }: { task: Task; showRepo?: boolean 
   const checks = task.checks ?? [];
   const passed = checks.filter((c) => c.ok).length;
   const approved = Boolean(v?.approved);
+  const accept = useAcceptWords(task.workspaceId);
 
   async function merge() {
     setBusy(true);
@@ -259,7 +260,7 @@ export function ReviewCard({ task, showRepo }: { task: Task; showRepo?: boolean 
       <div className="flex flex-wrap items-center gap-2.5">
         <Glyph actor={reviewer} />
         <span className={cn("text-xs font-medium", approved ? "text-success" : "text-warning")}>
-          {approved ? t("ready") : t("concerns")}
+          {approved ? t(accept ? "readyAccept" : "ready") : t("concerns")}
         </span>
         {showRepo && <Chip className="h-[22px] font-mono">{repo(task.repoId)?.name ?? "—"}</Chip>}
         <span className="text-[12.5px] text-muted">
@@ -288,7 +289,7 @@ export function ReviewCard({ task, showRepo }: { task: Task; showRepo?: boolean 
         {approved && (
           <Button variant="primary" onClick={merge} disabled={busy}>
             {busy ? <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> : <GitMerge className="size-3.5" aria-hidden="true" />}
-            {t("merge", { branch: task.baseBranch ?? "main" })}
+            {accept ? t("mergeAccept") : t("merge", { branch: task.baseBranch ?? "main" })}
           </Button>
         )}
         <Link href={`/runs/${task.id}/decide`} className={buttonClass(approved ? "secondary" : "primary")}>

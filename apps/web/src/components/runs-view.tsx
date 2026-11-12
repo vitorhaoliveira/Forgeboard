@@ -72,7 +72,7 @@ export function RunsView() {
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <StatusChip status={task.status} />
+                        <StatusChip status={task.status} workspaceId={task.workspaceId} />
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-xs text-muted">{formatCost(task.costUsd, locale)}</td>
                       <td className="px-4 py-3 text-right text-xs text-muted">{timeAgo(task.createdAt, locale)}</td>

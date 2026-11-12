@@ -17,6 +17,8 @@ import {
   MAX_FLOW_STEPS,
   TEAM_TEMPLATES,
   templateMembers,
+  WORK_KINDS,
+  type WorkKind,
   validateFlow,
   WORKSPACE_COLORS,
   type Agent,
@@ -39,7 +41,7 @@ import { bus } from "./bus.js";
 import { detectChecks } from "./checks.js";
 import { config } from "./config.js";
 import { agents, events, flows, repos, rules, tasks, teams, workspaces } from "./db.js";
-import { GitError, repoRoot } from "./git.js";
+import { GitError, repoRoot, trackFolder } from "./git.js";
 import {
   ackAssumptions,
   answerQuestion,
@@ -129,7 +131,7 @@ async function addRepoAt(raw: string, workspaceId: string): Promise<Repo> {
   const path = resolve(raw.trim().replace(/^~(?=$|\/)/, process.env.HOME ?? "~"));
   if (!existsSync(path) || !statSync(path).isDirectory()) throw new HttpError(400, `Folder not found: ${path}`);
   const root = await repoRoot(path);
-  if (!root) throw new HttpError(400, `${path} isn't a git repository. Run \`git init\` and make a first commit.`);
+  if (!root) throw new HttpError(400, `${path} isn't tracked yet. Choose it with "Choose folder…" and click "Start tracking this folder".`);
 
   const existing = repos.findByPath(root);
   if (existing) {
@@ -175,7 +177,7 @@ app.post("/api/workspaces", async (c) => {
   // Validate every folder before creating anything.
   for (const p of input.repoPaths) {
     const root = await repoRoot(resolve(p.trim().replace(/^~(?=$|\/)/, process.env.HOME ?? "~")));
-    if (!root) throw new HttpError(400, `${p} isn't a git repository.`);
+    if (!root) throw new HttpError(400, `${p} isn't tracked yet. Choose it with "Choose folder…" and click "Start tracking this folder".`);
     if (repos.findByPath(root)) throw new HttpError(400, `${basename(root)} already belongs to another workspace.`);
   }
 
@@ -267,6 +269,8 @@ app.post("/api/teams", async (c) => {
     name: input.name,
     description: input.description,
     planning: template?.planning ?? BUILD_AND_REVIEW_ID,
+    kind: template?.kind ?? "code",
+    commands: template?.commands ?? "standard",
     // Without a template, a team starts as a copy of the default team.
     members: template ? templateMembers(template, input.locale as Locale) : agents.defaults().map(({ builtIn: _b, customized: _c, ...a }) => a),
     ...(template ? { templateId: template.id } : {}),
@@ -284,6 +288,9 @@ app.patch("/api/teams/:id", async (c) => {
       name: z.string().trim().min(1).max(40).optional(),
       description: z.string().trim().max(200).optional(),
       planning: z.string().min(1).optional(),
+      kind: z.enum(WORK_KINDS as [WorkKind, ...WorkKind[]]).optional(),
+      about: z.string().trim().max(1_000).optional(),
+      commands: z.enum(["standard", "restricted"]).optional(),
     }),
   );
   if (patch.planning && !flows.get(patch.planning)) throw new HttpError(404, "Flow not found");
@@ -393,6 +400,21 @@ app.get("/api/folders", async (c) => {
     entries,
   };
   return c.json(listing);
+});
+
+/**
+ * Makes a plain folder trackable: \`git init\` and a first commit of what is there. Git powers the
+ * task's own copy, the list of changes and "discard"; nothing else in the folder changes.
+ */
+app.post("/api/folders/track", async (c) => {
+  const { path: raw } = await body(c, z.object({ path: z.string().min(1) }));
+  const home = homedir();
+  const path = resolve(raw.replace(/^~(?=$|\/)/, home));
+  if (!existsSync(path) || !statSync(path).isDirectory()) throw new HttpError(400, `Folder not found: ${path}`);
+  if (path === home || path === dirname(path)) throw new HttpError(400, "Pick a project folder, not your home or the disk itself.");
+  if (await repoRoot(path)) throw new HttpError(400, `${basename(path)} is already tracked.`);
+  await trackFolder(path);
+  return c.json({ path }, 201);
 });
 
 // ---------- Repos ----------

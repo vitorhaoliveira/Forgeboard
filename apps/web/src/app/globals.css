@@ -102,3 +102,14 @@ body {
 .md strong {
   font-weight: 600;
 }
+
+/* Documents shown on the review screen: headings, quotes and tables too. */
+.doc h1 { font-size: 1.6em; font-weight: 650; letter-spacing: -0.02em; margin-top: 0.4em; }
+.doc h2 { font-size: 1.3em; font-weight: 600; margin-top: 1.1em; }
+.doc h3 { font-size: 1.1em; font-weight: 600; margin-top: 1em; }
+.doc h4, .doc h5, .doc h6 { font-weight: 600; margin-top: 0.9em; }
+.doc blockquote { border-left: 3px solid var(--border-strong); padding-left: 0.9em; color: var(--muted); }
+.doc hr { border: 0; border-top: 1px solid var(--border); margin: 1.2em 0; }
+.doc table { border-collapse: collapse; display: block; overflow-x: auto; }
+.doc th, .doc td { border: 1px solid var(--border); padding: 0.35em 0.7em; text-align: left; }
+.doc th { background: var(--panel-2); font-weight: 600; }

@@ -69,6 +69,13 @@ export interface CreateAgentInput {
   instructions?: string;
 }
 
+/**
+ * What a team works on. It changes the words (build or write, merge or accept) and what agents are told.
+ * Missing means "code", as before v2.4.
+ */
+export type WorkKind = "code" | "writing" | "research" | "data" | "other";
+export const WORK_KINDS: WorkKind[] = ["code", "writing", "research", "data", "other"];
+
 /** A named group of agents a workspace can use, with the flow its tasks run by default. */
 export interface Team {
   id: string;
@@ -77,6 +84,11 @@ export interface Team {
   /** Flow new tasks run (unless the workspace or the task picks another). */
   planning: string;
   members: Agent[];
+  kind?: WorkKind;
+  /** What the team works on, in your words. Every member is told. */
+  about?: string;
+  /** What its builders may run. Missing means "standard". A workspace set to "restricted" always wins. */
+  commands?: ForgeCommands;
   /** The template it started from, if any. */
   templateId?: string;
   createdAt: string;
@@ -96,6 +108,8 @@ export interface TeamTemplate {
   name: Record<Locale, string>;
   description: Record<Locale, string>;
   planning: string;
+  kind: WorkKind;
+  commands: ForgeCommands;
   members: (Omit<Agent, "instructions" | "builtIn" | "customized"> & { instructions: Record<Locale, string> })[];
   /** Tasks this team is good at, to give an idea. */
   examples: Record<Locale, string[]>;
@@ -514,6 +528,20 @@ export interface DiffFile {
   additions: number;
   deletions: number;
   patch: string;
+  /** Documents (markdown, text): the file as it is now, to show it rendered. */
+  preview?: string;
+}
+
+const DOCUMENT_EXT = /\.(md|mdx|markdown|txt|text|rst|adoc)$/i;
+
+/** Files shown as a document (rendered) on the review screen. */
+export function isDocument(path: string): boolean {
+  return DOCUMENT_EXT.test(path);
+}
+
+/** Markdown files are rendered; other documents are shown as plain text. */
+export function isMarkdown(path: string): boolean {
+  return /\.(md|mdx|markdown)$/i.test(path);
 }
 
 export const DEFAULT_SERVER_PORT = 4317;
@@ -569,7 +597,7 @@ const LEAD_T = {
   },
 };
 
-/** Ready-made teams for code. Teams for docs, research and content come with "any kind of work". */
+/** Ready-made teams: for code first, then for other kinds of work. */
 export const TEAM_TEMPLATES: TeamTemplate[] = [
   {
     id: "build-review",
@@ -579,6 +607,8 @@ export const TEAM_TEMPLATES: TeamTemplate[] = [
       "pt-BR": "O Forge constrói, o Hawk revisa e devolve até ficar certo. O clássico.",
     },
     planning: "build-and-review",
+    kind: "code",
+    commands: "standard",
     members: [FORGE_T, HAWK_T],
     examples: {
       "en-US": ["Add pagination to the users table", "Fix the date shown in the invoice"],
@@ -593,6 +623,8 @@ export const TEAM_TEMPLATES: TeamTemplate[] = [
       "pt-BR": "Um Lead escolhe quem trabalha em cada tarefa: o Forge constrói, o Scribe escreve a documentação, o Hawk revisa e o Guard cuida da segurança.",
     },
     planning: "lead-decides",
+    kind: "code",
+    commands: "standard",
     members: [
       LEAD_T,
       FORGE_T,
@@ -633,6 +665,8 @@ export const TEAM_TEMPLATES: TeamTemplate[] = [
       "pt-BR": "O Forge corrige e as verificações confirmam. Sem rodada de revisão: para mudanças pequenas e de baixo risco.",
     },
     planning: "lead-decides",
+    kind: "code",
+    commands: "standard",
     members: [
       {
         ...LEAD_T,
@@ -656,6 +690,8 @@ export const TEAM_TEMPLATES: TeamTemplate[] = [
       "pt-BR": "O Probe escreve os testes que descrevem a mudança, o Forge faz eles passarem e o Hawk revisa os dois.",
     },
     planning: "lead-decides",
+    kind: "code",
+    commands: "standard",
     members: [
       {
         ...LEAD_T,
@@ -684,6 +720,197 @@ export const TEAM_TEMPLATES: TeamTemplate[] = [
     },
   },
 ];
+
+/** A Lead for a non-code team, told the usual order of its members. */
+function leadWith(en: string, pt: string) {
+  return { ...LEAD_T, instructions: { "en-US": en, "pt-BR": pt } };
+}
+
+function member(id: string, name: string, role: "builder" | "reviewer", personality: Personality, en: string, pt: string) {
+  return { id, name, role, provider: "claude-code" as const, personality, instructions: { "en-US": en, "pt-BR": pt } };
+}
+
+const FACT_CHECKER = member(
+  "fact-checker",
+  "Fact-checker",
+  "reviewer",
+  "strict",
+  "Mark every claim without a source, every number that doesn't add up and every quote you can't trace. Never rewrite the text: list what to fix.",
+  "Marque toda afirmação sem fonte, todo número que não fecha e toda citação que você não consegue rastrear. Nunca reescreva o texto: liste o que corrigir.",
+);
+
+TEAM_TEMPLATES.push(
+  {
+    id: "docs",
+    name: { "en-US": "Docs", "pt-BR": "Documentação" },
+    description: {
+      "en-US": "Writer writes guides, READMEs and manuals; Editor checks they are clear, correct and consistent.",
+      "pt-BR": "O Writer escreve guias, READMEs e manuais; o Editor confere se estão claros, corretos e consistentes.",
+    },
+    planning: "lead-decides",
+    kind: "writing",
+    commands: "restricted",
+    members: [
+      leadWith(
+        "Writer writes, then Editor reviews. Skip the review only for a one-line fix.",
+        "O Writer escreve, depois o Editor revisa. Pule a revisão só em correções de uma linha.",
+      ),
+      member(
+        "writer",
+        "Writer",
+        "builder",
+        "mentor",
+        "Write for someone new to the subject: short sentences, one idea per paragraph, an example for each step. Keep the tone and structure the folder already uses.",
+        "Escreva para quem não conhece o assunto: frases curtas, uma ideia por parágrafo, um exemplo para cada passo. Mantenha o tom e a estrutura que a pasta já usa.",
+      ),
+      member(
+        "editor",
+        "Editor",
+        "reviewer",
+        "strict",
+        "Check clarity, accuracy and consistency with the other documents: terms, headings, links. Block on anything wrong or confusing; don't rewrite for taste.",
+        "Confira clareza, precisão e consistência com os outros documentos: termos, títulos, links. Bloqueie o que estiver errado ou confuso; não reescreva por gosto.",
+      ),
+    ],
+    examples: {
+      "en-US": ["Write a getting started guide", "Update the FAQ with the new prices"],
+      "pt-BR": ["Escrever um guia de primeiros passos", "Atualizar o FAQ com os novos preços"],
+    },
+  },
+  {
+    id: "content",
+    name: { "en-US": "Content", "pt-BR": "Conteúdo" },
+    description: {
+      "en-US": "Blog posts, newsletters and marketing copy. Writer drafts, Editor polishes, Fact-checker checks every claim.",
+      "pt-BR": "Posts, newsletters e textos de marketing. O Writer rascunha, o Editor lapida e o Fact-checker confere cada afirmação.",
+    },
+    planning: "lead-decides",
+    kind: "writing",
+    commands: "restricted",
+    members: [
+      leadWith(
+        "Writer drafts, then Editor. Add Fact-checker whenever the text has numbers, claims about others or quotes.",
+        "O Writer rascunha, depois o Editor. Inclua o Fact-checker sempre que o texto tiver números, afirmações sobre terceiros ou citações.",
+      ),
+      member(
+        "writer",
+        "Writer",
+        "builder",
+        "balanced",
+        "Write for the audience in the task: a strong first line, concrete examples, no filler. Save each piece as a markdown file.",
+        "Escreva para o público da tarefa: uma primeira frase forte, exemplos concretos, sem enrolação. Salve cada peça como um arquivo markdown.",
+      ),
+      member(
+        "editor",
+        "Editor",
+        "reviewer",
+        "strict",
+        "Check tone, structure and length against the brief and the house rules. Point out weak openings, jargon and repetition.",
+        "Confira tom, estrutura e tamanho em relação ao pedido e às regras da casa. Aponte aberturas fracas, jargão e repetição.",
+      ),
+      FACT_CHECKER,
+    ],
+    examples: {
+      "en-US": ["Write a launch post for the new plan", "Draft three subject lines for the newsletter"],
+      "pt-BR": ["Escrever o post de lançamento do novo plano", "Rascunhar três assuntos para a newsletter"],
+    },
+  },
+  {
+    id: "research",
+    name: { "en-US": "Research brief", "pt-BR": "Pesquisa" },
+    description: {
+      "en-US": "Researcher reads what is in the folder and writes a brief with sources; Fact-checker checks it holds up.",
+      "pt-BR": "O Researcher lê o que está na pasta e escreve um resumo com fontes; o Fact-checker confere se ele se sustenta.",
+    },
+    planning: "lead-decides",
+    kind: "research",
+    commands: "restricted",
+    members: [
+      leadWith("Researcher writes the brief, then Fact-checker reviews it.", "O Researcher escreve o resumo, depois o Fact-checker revisa."),
+      member(
+        "researcher",
+        "Researcher",
+        "builder",
+        "balanced",
+        "Answer the question in the task from the material in the folder. Start with the answer, then the evidence, then what is still unknown. Cite the file (and page or section) for every claim.",
+        "Responda à pergunta da tarefa a partir do material da pasta. Comece pela resposta, depois as evidências, depois o que ainda não se sabe. Cite o arquivo (e página ou seção) de cada afirmação.",
+      ),
+      FACT_CHECKER,
+    ],
+    examples: {
+      "en-US": ["Summarize the interviews in /interviews", "Compare the three supplier proposals"],
+      "pt-BR": ["Resumir as entrevistas em /entrevistas", "Comparar as três propostas de fornecedores"],
+    },
+  },
+  {
+    id: "data",
+    name: { "en-US": "Data analysis", "pt-BR": "Análise de dados" },
+    description: {
+      "en-US": "Analyst explores the data with Python and writes up what it found; Reviewer checks the method and the numbers.",
+      "pt-BR": "O Analyst explora os dados com Python e escreve o que encontrou; o Reviewer confere o método e os números.",
+    },
+    planning: "lead-decides",
+    kind: "data",
+    commands: "standard",
+    members: [
+      leadWith("Analyst first, then Reviewer. Add the checks when the folder has tests.", "Primeiro o Analyst, depois o Reviewer. Inclua as verificações quando a pasta tiver testes."),
+      member(
+        "analyst",
+        "Analyst",
+        "builder",
+        "balanced",
+        "Work in scripts or notebooks the user can run again. Never change the raw data files. Write a short report: the question, the method, the results with numbers, and the caveats.",
+        "Trabalhe em scripts ou notebooks que a pessoa possa rodar de novo. Nunca altere os arquivos de dados brutos. Escreva um relatório curto: a pergunta, o método, os resultados com números e as ressalvas.",
+      ),
+      member(
+        "reviewer",
+        "Reviewer",
+        "reviewer",
+        "strict",
+        "Check that the method answers the question, the numbers in the report match the code, and the caveats are honest. Block on wrong joins, leaks and cherry-picking.",
+        "Confira se o método responde à pergunta, se os números do relatório batem com o código e se as ressalvas são honestas. Bloqueie joins errados, vazamentos e escolha seletiva de dados.",
+      ),
+    ],
+    examples: {
+      "en-US": ["Which plans churn the most?", "Clean sales.csv and chart revenue by month"],
+      "pt-BR": ["Quais planos têm mais cancelamentos?", "Limpar vendas.csv e fazer um gráfico da receita por mês"],
+    },
+  },
+  {
+    id: "translation",
+    name: { "en-US": "Translation", "pt-BR": "Tradução" },
+    description: {
+      "en-US": "Translator translates the files, Native reviewer reads them as a native speaker would.",
+      "pt-BR": "O Translator traduz os arquivos e o Native reviewer lê como um falante nativo leria.",
+    },
+    planning: "lead-decides",
+    kind: "writing",
+    commands: "restricted",
+    members: [
+      leadWith("Always Translator, then Native reviewer.", "Sempre o Translator, depois o Native reviewer."),
+      member(
+        "translator",
+        "Translator",
+        "builder",
+        "balanced",
+        "Translate meaning, not word by word. Keep formatting, links, code and names as they are. Put each translation next to the original unless the task says where.",
+        "Traduza o sentido, não palavra por palavra. Mantenha formatação, links, código e nomes como estão. Coloque cada tradução ao lado do original, a menos que a tarefa diga onde.",
+      ),
+      member(
+        "native",
+        "Native reviewer",
+        "reviewer",
+        "strict",
+        "Read the translation as a native speaker: flag anything that sounds translated, wrong terms and missing parts. Compare with the original.",
+        "Leia a tradução como um falante nativo: aponte o que soa traduzido, termos errados e partes faltando. Compare com o original.",
+      ),
+    ],
+    examples: {
+      "en-US": ["Translate the docs folder to Spanish", "Review the Portuguese version of the onboarding emails"],
+      "pt-BR": ["Traduzir a pasta de docs para o espanhol", "Revisar a versão em inglês dos e-mails de boas-vindas"],
+    },
+  },
+);
 
 /** A template's agents in one language, ready to save as a team's members. */
 export function templateMembers(template: TeamTemplate, locale: Locale): Agent[] {

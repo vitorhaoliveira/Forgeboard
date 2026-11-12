@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { needsYou, type Agent, type AgentId, type Flow, type Team, type ProviderInfo, type Repo, type Task, type Workspace } from "@forgeboard/shared";
+import { needsYou, type Agent, type AgentId, type Flow, type Team, type WorkKind, type ProviderInfo, type Repo, type Task, type Workspace } from "@forgeboard/shared";
 import { api, ServerDownError, UnauthorizedError } from "./api";
 
 const LAST_REPO_KEY = "forgeboard:lastRepo";
@@ -228,4 +228,18 @@ export function WorkspaceScope({ workspaceId, children }: { workspaceId: string 
 
 export function useWorkspaceScope(): string | undefined {
   return useContext(WorkspaceScopeContext);
+}
+
+/** What a workspace's team works on: code unless it uses a team for other work. */
+export function useWorkKind(workspaceId?: string): WorkKind {
+  const scoped = useWorkspaceScope();
+  const { workspaces, teams } = useAppState();
+  const ws = workspaces.find((w) => w.id === (workspaceId ?? scoped));
+  const team = ws?.crewMode === "team" ? teams.find((t) => t.id === ws.teamId) : undefined;
+  return team?.kind ?? "code";
+}
+
+/** Outside code, results are accepted rather than merged. */
+export function useAcceptWords(workspaceId?: string): boolean {
+  return useWorkKind(workspaceId) !== "code";
 }

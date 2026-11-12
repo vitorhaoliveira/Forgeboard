@@ -77,6 +77,8 @@ const realApi = {
 
   /** Subfolders of a folder on this machine (home by default), for picking a repository. */
   folders: (path?: string) => request<FolderListing>(`/api/folders${path ? `?path=${encodeURIComponent(path)}` : ""}`),
+  /** Starts tracking a plain folder (git init and a first commit), so a workspace can use it. */
+  trackFolder: (path: string) => request<{ path: string }>("/api/folders/track", post({ path })),
 
   repos: (workspaceId?: string) => request<Repo[]>(`/api/repos${wsQuery(workspaceId)}`),
   addRepo: (workspaceId: string, path: string) => request<Repo>("/api/repos", post({ path, workspaceId })),
@@ -96,7 +98,7 @@ const realApi = {
   /** Teams you made (templates are in @forgeboard/shared). */
   teams: () => request<Team[]>("/api/teams"),
   createTeam: (input: CreateTeamInput) => request<Team>("/api/teams", post(input)),
-  updateTeam: (id: string, data: { name?: string; description?: string; planning?: string }) => request<Team>(`/api/teams/${id}`, patch(data)),
+  updateTeam: (id: string, data: Partial<Pick<Team, "name" | "description" | "planning" | "kind" | "about" | "commands">>) => request<Team>(`/api/teams/${id}`, patch(data)),
   removeTeam: (id: string) => request<void>(`/api/teams/${id}`, del),
   createTeamAgent: (teamId: string, input: CreateAgentInput) => request<Agent>(`/api/teams/${teamId}/agents`, post(input)),
   updateTeamAgent: (teamId: string, id: string, data: Partial<Agent>) => request<Agent>(`/api/teams/${teamId}/agents/${id}`, patch(data)),

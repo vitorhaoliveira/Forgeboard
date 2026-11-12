@@ -54,14 +54,18 @@ export const mockProvider: Provider = {
         [400, { type: "tool_result", toolUseId: `l${round}`, output: "README.md", isError: false }],
       ];
       const lean = input.prompt.includes("asked for another one");
+      // The team's first builder and first reviewer, from the roster in the prompt.
+      const roster = [...input.prompt.matchAll(/^- id "([^"]+)" · [^·]+ · (builds|makes|reviews)/gm)];
+      const maker = roster.find((m) => m[2] !== "reviews")?.[1] ?? "forge";
+      const reviewer = roster.find((m) => m[2] === "reviews")?.[1];
       const plan = {
         summary: lean
           ? t(locale, "Smaller plan: Forge builds and the checks run.", "Plano menor: o Forge constrói e as verificações rodam.")
           : t(locale, "Forge builds, the checks run and Hawk reviews: a small change with a second look.", "O Forge constrói, as verificações rodam e o Hawk revisa: mudança pequena com uma segunda olhada."),
         steps: [
-          { type: "agent", agentId: "forge", why: t(locale, "Writes the change.", "Escreve a mudança.") },
+          { type: "agent", agentId: maker, why: t(locale, "Writes the change.", "Escreve a mudança.") },
           { type: "checks", why: t(locale, "The repository has checks.", "O repositório tem verificações.") },
-          ...(lean ? [] : [{ type: "agent", agentId: "hawk", why: t(locale, "A second look before you merge.", "Uma segunda olhada antes do merge.") }]),
+          ...(lean || !reviewer ? [] : [{ type: "agent", agentId: reviewer, why: t(locale, "A second look before you merge.", "Uma segunda olhada antes do merge.") }]),
         ],
       };
       text = `${plan.summary}\nFORGEBOARD_PLAN: ${JSON.stringify(plan)}`;

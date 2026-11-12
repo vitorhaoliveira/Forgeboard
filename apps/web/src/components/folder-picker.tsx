@@ -9,8 +9,8 @@ import { cn } from "@/lib/utils";
 import { Button } from "./ui";
 
 /**
- * Browses folders on this machine (through the local server) to pick a git repository,
- * instead of typing its path. Repositories are marked; only they can be picked.
+ * Browses folders on this machine (through the local server) to pick one, instead of typing its path.
+ * Tracked folders (git repositories) are marked; a plain folder can start being tracked here.
  */
 export function FolderPicker({ open, onClose, onPick }: { open: boolean; onClose: () => void; onPick: (path: string) => void }) {
   const t = useTranslations("folders");
@@ -20,6 +20,7 @@ export function FolderPicker({ open, onClose, onPick }: { open: boolean; onClose
   const [listing, setListing] = useState<FolderListing | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tracking, setTracking] = useState(false);
 
   const go = useCallback(async (path?: string) => {
     setLoading(true);
@@ -49,6 +50,19 @@ export function FolderPicker({ open, onClose, onPick }: { open: boolean; onClose
     const el = crumbsRef.current;
     if (el) el.scrollLeft = el.scrollWidth;
   }, [listing?.path]);
+
+  const track = async (path: string) => {
+    setTracking(true);
+    setError(null);
+    try {
+      await api.trackFolder(path);
+      pick(path);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTracking(false);
+    }
+  };
 
   const pick = (path: string) => {
     onPick(path);
@@ -134,13 +148,20 @@ export function FolderPicker({ open, onClose, onPick }: { open: boolean; onClose
               ? t("reposHere", { count: repos })
               : t("notRepo")}
         </p>
-        <Button variant="ghost" onClick={onClose}>
+        <Button variant="ghost" onClick={onClose} className="ml-auto">
           {tc("cancel")}
         </Button>
-        <Button variant="primary" onClick={() => listing && pick(listing.path)} disabled={!listing?.isRepo || listing.added}>
-          <Check className="size-3.5" aria-hidden="true" />
-          {t("pickThis")}
-        </Button>
+        {listing && !listing.isRepo && repos === 0 && listing.parent && listing.path !== listing.home ? (
+          <Button variant="primary" onClick={() => track(listing.path)} disabled={tracking}>
+            {tracking ? <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> : <FolderGit2 className="size-3.5" aria-hidden="true" />}
+            {tracking ? t("tracking") : t("track")}
+          </Button>
+        ) : (
+          <Button variant="primary" onClick={() => listing && pick(listing.path)} disabled={!listing?.isRepo || listing.added}>
+            <Check className="size-3.5" aria-hidden="true" />
+            {t("pickThis")}
+          </Button>
+        )}
       </div>
     </dialog>
   );
