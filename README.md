@@ -1,12 +1,12 @@
 # Forgeboard
 
-**Your crew of AI coding agents, on your machine.** Describe a task; Forge builds it, the checks run, Hawk reviews it and sends it back until it's right. Agents ask you when they need a decision. You merge when you're happy. Need a different process? Build your own flow, with your own agents.
+**Your crew of AI agents, on your machine.** Describe a task; Forge builds it, the checks run, Hawk reviews it and sends it back until it's right. Agents ask you when they need a decision. You merge when you're happy. Need a different process? Build your own flow, with your own agents. Not code? Teams for docs, content, research, data and translation work in any folder.
 
 ![Forgeboard demo: answer the agent's question, watch the crew build, check and review, then merge](docs/demo.gif)
 
 <sub>The demo above runs in the browser with a simulated crew (`pnpm demo`). See [Live demo](#live-demo).</sub>
 
-> Status: **v2.3**. Teams (your own or ready-made), a Lead that picks the team for each task, your own flows (builders, reviewers, checks, "Ask me" pauses) and your own agents, a flow per task, a conversation with the crew (message it mid-run, "decide and tell me" mode), Claude Code and Codex as providers, install with `npx forgeboard`, agents ask with forms and editable plans (A2UI), public demo mode, workspaces per project, live run view, merge decision, house rules, English (US) and Brazilian Portuguese. Next up: any kind of work, not only code (see `docs/plans/v3-teams.md`).
+> Status: **v2.4**. Any kind of work (docs, content, research, data, translation) in any folder, teams (your own or ready-made), a Lead that picks the team for each task, your own flows (builders, reviewers, checks, "Ask me" pauses) and your own agents, a flow per task, a conversation with the crew (message it mid-run, "decide and tell me" mode), Claude Code and Codex as providers, install with `npx forgeboard`, agents ask with forms and editable plans (A2UI), public demo mode, workspaces per project, live run view, merge decision, house rules, English (US) and Brazilian Portuguese. Next up: Lead checkpoints (see `docs/plans/v3-teams.md`).
 
 ## How it works
 
@@ -29,6 +29,7 @@ your task → Forge (builds) → Checks (tests · lint · types) → Hawk (revie
   For example: *Forge → Checks → Hawk ↩ Forge → Scribe (docs) → Ask me*. Pick the flow in the task bar; each workspace has a default.
 - **Or let the Lead decide.** With the **Lead decides** flow, the Lead reads each task and picks who builds, whether the checks run and who reviews, with a line on why for each step. You approve the plan or ask for another one (or, in *Decide and tell me*, it just runs).
 - **Use a team.** In **Teams**, start from a ready-made team (Product team with a Lead, Scribe and Guard; Quick fix; Tests first) or build your own, then pick it for a workspace. Its agents, Lead and default flow come with it.
+- **Not only code.** Teams for **Docs**, **Content**, **Research brief**, **Data analysis** and **Translation** work in any folder: "Choose folder…" can start tracking a plain folder in one click. Each team says what it works on, so agents are told the right thing, its builders can be limited to editing files, and the review screen shows changed documents rendered, with an **Accept** button.
 - **Make your own agents** in **Teams**. Each gets a name, a role (builds or reviews), the AI that runs it (Claude Code or Codex), a personality and instructions. What an agent may do follows from its role.
 
 - **Every task runs in its own git worktree** (`~/.forgeboard/worktrees/<task>`), on a branch like `fb/add-pagination-ab12c`. Your checkout is never touched until you merge.
@@ -76,7 +77,7 @@ Requirements: **Node 22.13+**, **git**, and at least one agent CLI logged in: [C
 npx forgeboard
 ```
 
-That's it: it opens http://localhost:4317. Create a workspace, pick one or more repositories with "Choose folder…" (any git repo with at least one commit), and type a task in the top bar. To keep it installed: `npm i -g forgeboard`, then run `forgeboard`.
+That's it: it opens http://localhost:4317. Create a workspace, pick one or more folders with "Choose folder…" (a git repository, or any folder: click "Start tracking this folder"), and type a task in the top bar. To keep it installed: `npm i -g forgeboard`, then run `forgeboard`.
 
 | Option | Default | |
 |---|---|---|
@@ -144,7 +145,7 @@ packages/
 ### Releasing
 
 1. Bump `version` in `packages/cli/package.json` and add the section to `CHANGELOG.md`.
-2. Merge to `main`, then tag: `git tag v2.3.1 && git push origin v2.3.1`.
+2. Merge to `main`, then tag: `git tag v2.4.1 && git push origin v2.4.1`.
 3. The **Publish to npm** workflow checks the tag matches the version, builds the package and publishes it with npm Trusted Publishing (no token; set up once on npmjs.com under the package's Settings → Trusted Publisher). It then creates the GitHub release, with the version's `CHANGELOG.md` section as notes; the title comes from the section's first line ("Talk to the crew: …" → "v1.9.0 — Talk to the crew").
 
 The very first version was published by hand (`pnpm package`, then `npm publish --access public` in `packages/cli`), since npm only lets you add a trusted publisher to a package that already exists.
@@ -167,7 +168,7 @@ Key server files: `orchestrator.ts` (`runFlow`, which runs a task's flow step by
 - [x] **v2.1 — Folder picker**: choose a repository from your folders instead of typing its path
 - [x] **v2.2 — Lead**: a Lead plans the team for each task; you approve the plan or ask for another
 - [x] **v2.3 — Teams & templates**: build a team or start from a ready-made one
-- [ ] **v2.4 — Any kind of work**: folders without git, docs/research/content/data templates, document preview
+- [x] **v2.4 — Any kind of work**: any folder, docs/content/research/data/translation teams, document preview
 - [ ] **Later**: Lead checkpoints, drag-and-drop canvas, parallel steps
 - [ ] **v3 — More agents**: API-key providers, parallel runs, cost dashboard
 - [ ] **v4 — Routines**: scheduled and reusable tasks

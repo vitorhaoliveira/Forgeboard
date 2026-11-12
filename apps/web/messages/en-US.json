@@ -32,7 +32,8 @@
     "merged": "Merged",
     "discarded": "Discarded",
     "cancelled": "Stopped",
-    "error": "Error"
+    "error": "Error",
+    "accepted": "Accepted"
   },
   "actors": {
     "checks": "Checks",
@@ -40,9 +41,9 @@
     "system": "Forgeboard"
   },
   "repo": {
-    "add": "Add repository",
+    "add": "Add folder",
     "addPlaceholder": "/Users/you/projects/my-app",
-    "addHint": "Any git repository with at least one commit."
+    "addHint": "A code repository or any folder of files: if it isn’t tracked yet, you can start tracking it."
   },
   "composer": {
     "label": "Tell your crew what to do",
@@ -50,7 +51,7 @@
     "start": "Start",
     "needsRepo": "Create a workspace first",
     "destination": "Where the task runs",
-    "noRepos": "Add a repository to this workspace first",
+    "noRepos": "Add a folder to this workspace first",
     "placeholderWs": "Tell the {name} crew what to do…",
     "flow": "Flow"
   },
@@ -114,7 +115,9 @@
     "risk": "{level, select, low {Low risk} medium {Medium risk} high {High risk} other {Unknown risk}}",
     "merge": "Merge into {branch}",
     "lookCloser": "Look closer",
-    "checksPassed": "{passed}/{total} checks passed"
+    "checksPassed": "{passed}/{total} checks passed",
+    "readyAccept": "Ready to accept",
+    "mergeAccept": "Accept"
   },
   "flow": {
     "name": "Build & Review",
@@ -133,7 +136,11 @@
     "ask": "Ask me",
     "roleAsk": "pause to check",
     "roleLead": "plans the team",
-    "leadName": "Lead decides"
+    "leadName": "Lead decides",
+    "mergeAccept": "Accept",
+    "roleMergeAccept": "into your folder",
+    "roleMaker": "writes",
+    "roleChecksAny": "your commands"
   },
   "run": {
     "stop": "Stop",
@@ -171,7 +178,9 @@
     "decidedHint": "Reply here if you want something changed.",
     "messagesOnly": "Messages only",
     "planTitle": "{name} planned the team",
-    "sendsBackTo": "(sends back to {name})"
+    "sendsBackTo": "(sends back to {name})",
+    "mergedAccept": "Accepted into your folder",
+    "reviewMergeAccept": "Review & accept"
   },
   "decide": {
     "back": "← Desk",
@@ -198,7 +207,13 @@
     "merge": "{count, plural, =0 {Nothing to merge} one {Merge # file into {branch}} other {Merge # files into {branch}}}",
     "merging": "Merging…",
     "notReady": "This task is {status}.",
-    "openRun": "Open the run"
+    "openRun": "Open the run",
+    "mergeAccept": "{count, plural, =0 {Nothing to accept} one {Accept # file} other {Accept # files}}",
+    "mergingAccept": "Accepting…",
+    "filesHintAccept": "Uncheck a file to leave it out",
+    "howWeKnowAccept": "HOW WE CHECKED IT",
+    "preview": "Preview",
+    "changes": "Changes"
   },
   "crew": {
     "title": "Default team",
@@ -234,7 +249,8 @@
     "newAgentFlows": "To put it to work, add it to a flow in Flows.",
     "create": "Create agent",
     "confirmDelete": "Delete {name}",
-    "roleLead": "Lead · reads each task and picks who works on it"
+    "roleLead": "Lead · reads each task and picks who works on it",
+    "roleMaker": "Builder · edits files only"
   },
   "settings": {
     "title": "Settings",
@@ -262,7 +278,7 @@
   },
   "runs": {
     "title": "Runs",
-    "empty": "No runs in this repository yet.",
+    "empty": "No runs in this folder yet.",
     "task": "Task",
     "status": "Status",
     "cost": "Cost",
@@ -332,7 +348,7 @@
     "allShort": "All",
     "create": "Create workspace",
     "tileLabel": "{name}, {count, plural, =0 {nothing waiting} one {# waiting for you} other {# waiting for you}}",
-    "repoCount": "{count, plural, one {# repository} other {# repositories}}",
+    "repoCount": "{count, plural, one {# folder} other {# folders}}",
     "crewDefault": "default crew",
     "crewCustom": "own crew",
     "waiting": "{count} waiting",
@@ -340,21 +356,21 @@
     "upToDate": "up to date",
     "idle": "nothing running",
     "configure": "Configure",
-    "allRepos": "All repos",
-    "filterByRepo": "Filter by repository",
-    "repos": "REPOSITORIES",
+    "allRepos": "All folders",
+    "filterByRepo": "Filter by folder",
+    "repos": "FOLDERS",
     "crew": "THIS WORKSPACE'S CREW",
     "rules": "House rules",
-    "rulesSummary": "{ws} in the workspace · {repo} in repos",
+    "rulesSummary": "{ws} in the workspace · {repo} in folders",
     "noChecks": "No checks configured",
     "default": "default",
     "custom": "customized",
     "headlineAll": "{count, plural, one {# thing is waiting for you} other {# things are waiting for you}} in {ws, plural, one {# workspace} other {# workspaces}}",
     "colorHint": "The color shows the workspace. Pick one in the sidebar to see only it.",
     "noWorkspacesTitle": "Create your first workspace",
-    "noWorkspacesBody": "A workspace groups the repositories of one project, with its own crew and house rules. Your branches stay untouched until you merge.",
-    "emptyRepos": "This workspace has no repositories yet.",
-    "addRepoHere": "Add a repository",
+    "noWorkspacesBody": "A workspace groups the folders of one project (code repositories, docs, anything), with its own team and house rules. Your files stay untouched until you accept the changes.",
+    "emptyRepos": "This workspace has no folders yet.",
+    "addRepoHere": "Add a folder",
     "notFound": "Workspace not found."
   },
   "newWs": {
@@ -371,11 +387,11 @@
       "pink": "Pink",
       "warning": "Yellow"
     },
-    "repos": "REPOSITORIES",
+    "repos": "FOLDERS",
     "repoPlaceholder": "~/projects/my-app",
     "add": "Add",
     "remove": "Remove {name}",
-    "reposHint": "You can add repositories later too.",
+    "reposHint": "A code repository or any folder of files. You can add folders later too.",
     "crew": "CREW",
     "crewDefault": "Default crew",
     "crewDefaultHint": "Forge and Hawk as they are today. You can customize them later.",
@@ -393,24 +409,24 @@
     "title": "Configure workspace",
     "back": "← {name}",
     "general": "General",
-    "repos": "Repositories",
+    "repos": "Folders",
     "crew": "Crew",
     "rules": "House rules",
     "danger": "Archive or delete",
     "save": "Save changes",
-    "addRepo": "Add repository",
+    "addRepo": "Add folder",
     "checks": "Checks",
     "noChecks": "no checks",
     "moveTo": "Move {repo} to another workspace",
     "removeRepo": "Remove",
-    "repoHint": "A repository belongs to one workspace. Moving it keeps its history.",
+    "repoHint": "A folder belongs to one workspace. Moving it keeps its history.",
     "removeRepoConfirm": "Remove {repo} from Forgeboard? Its tasks are removed; the folder isn't touched.",
     "crewDefault": "Use the default crew",
     "crewDefaultHint": "Changes to the default crew apply here too.",
     "crewCustom": "Own crew for {name}",
     "crewCustomHint": "Tune each agent just for this workspace.",
     "resetAgent": "Back to default",
-    "rulesHint": "Workspace rules apply to all its repositories. Repository rules apply only there.",
+    "rulesHint": "Workspace rules apply to all its folders. Folder rules apply only there.",
     "rulesWorkspace": "Workspace",
     "addRuleFor": "Write a rule for {target}…",
     "moveToWorkspace": "move to workspace",
@@ -420,8 +436,8 @@
     "archive": "Archive",
     "unarchive": "Unarchive",
     "delete": "Delete workspace",
-    "deleteConfirm": "Delete \"{name}\"? Its tasks and rules are removed; your repositories on disk aren't touched.",
-    "dangerHint": "Archiving hides the workspace and keeps its history. Deleting removes its tasks and rules; your repositories aren't touched.",
+    "deleteConfirm": "Delete \"{name}\"? Its tasks and rules are removed; your folders on disk aren't touched.",
+    "dangerHint": "Archiving hides the workspace and keeps its history. Deleting removes its tasks and rules; your folders aren't touched.",
     "safety": "Safety",
     "forgeCommands": "What {name} may run",
     "cmdStandard": "Standard",
@@ -472,20 +488,22 @@
   },
   "folders": {
     "choose": "Choose folder…",
-    "title": "Choose a repository",
+    "title": "Choose a folder",
     "home": "Home",
     "up": "Up one folder",
     "location": "Location",
     "folders": "Folders",
     "empty": "No folders here.",
-    "repo": "git repository",
+    "repo": "tracked",
     "added": "already added",
     "pick": "Choose",
-    "hereRepo": "This folder is a git repository.",
-    "hereAdded": "This repository already belongs to a workspace.",
-    "reposHere": "{count, plural, one {# repository here: hover it to choose, or open it.} other {# repositories here: hover one to choose, or open it.}}",
-    "notRepo": "Open the folder of a git repository to choose it.",
-    "pickThis": "Choose this folder"
+    "hereRepo": "This folder is tracked and ready to use.",
+    "hereAdded": "This folder already belongs to a workspace.",
+    "reposHere": "{count, plural, one {# tracked folder here: hover it to choose, or open it.} other {# tracked folders here: hover one to choose, or open it.}}",
+    "notRepo": "This folder isn't tracked yet. Starting to track it creates a hidden .git folder with a first snapshot; nothing else changes.",
+    "pickThis": "Choose this folder",
+    "track": "Start tracking this folder",
+    "tracking": "Starting…"
   },
   "teams": {
     "title": "Teams",
@@ -506,6 +524,25 @@
     "usedBy": "Used by {names}.",
     "unused": "No workspace uses this team yet: pick it in a workspace’s settings.",
     "delete": "Delete team",
-    "confirmDelete": "Delete team (workspaces go back to the default team)"
+    "confirmDelete": "Delete team (workspaces go back to the default team)",
+    "forCode": "For code",
+    "forOther": "For other work",
+    "kind": "What it works on",
+    "kindHint": "Changes the words used (write or build, accept or merge) and what agents are told.",
+    "kinds": {
+      "code": "Code",
+      "writing": "Writing",
+      "research": "Research",
+      "data": "Data",
+      "other": "Other"
+    },
+    "about": "About this team",
+    "aboutPlaceholder": "e.g. Help articles for a scheduling app, written for small business owners.",
+    "aboutHint": "Every member is told this, on every task.",
+    "commands": "What its builders may run",
+    "cmdRestricted": "Files only",
+    "cmdRestrictedHint": "Edit files, nothing else. Right for documents, research and translation.",
+    "cmdStandard": "Files and commands",
+    "cmdStandardHint": "Also run npm, pnpm, yarn, bun, npx and node (and Python, in data teams) to install and test. A workspace set to Restricted still wins."
   }
 }

@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import type { TaskStatus } from "@forgeboard/shared";
+import { useAcceptWords } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
 
 const tone: Record<TaskStatus, { text: string; dot: string }> = {
@@ -19,12 +20,13 @@ export function StatusDot({ status, className }: { status: TaskStatus; className
   return <span aria-hidden="true" className={cn("inline-block size-[7px] shrink-0 rounded-full", tone[status].dot, className)} />;
 }
 
-export function StatusChip({ status, children }: { status: TaskStatus; children?: React.ReactNode }) {
+export function StatusChip({ status, workspaceId, children }: { status: TaskStatus; workspaceId?: string; children?: React.ReactNode }) {
   const t = useTranslations("status");
+  const accept = useAcceptWords(workspaceId);
   return (
     <span className={cn("inline-flex h-6 items-center gap-1.5 rounded-full border bg-panel-2 px-2.5 text-xs", tone[status].text)}>
       <StatusDot status={status} />
-      {t(status)}
+      {status === "merged" && accept ? t("accepted") : t(status)}
       {children}
     </span>
   );

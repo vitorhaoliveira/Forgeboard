@@ -6,9 +6,9 @@ import { useEffect, useState } from "react";
 import Markdown from "react-markdown";
 import { useLocale, useTranslations } from "next-intl";
 import { CheckCircle2, ChevronRight, GitMerge, Loader2, XCircle } from "lucide-react";
-import type { DiffFile } from "@forgeboard/shared";
+import { isMarkdown, type DiffFile } from "@forgeboard/shared";
 import { api } from "@/lib/api";
-import { useAppState, WorkspaceScope } from "@/lib/app-state";
+import { useAcceptWords, useAppState, WorkspaceScope } from "@/lib/app-state";
 import { cleanAgentText } from "@/lib/run-model";
 import { flowOf, lastBuilder, lastReviewer, roleOfIn } from "@/lib/flow-view";
 import { useTaskStream } from "@/lib/use-task-stream";
@@ -43,9 +43,25 @@ function DiffLines({ patch }: { patch: string }) {
   );
 }
 
-function FileRow({ file, included, onToggle }: { file: DiffFile; included: boolean; onToggle: () => void }) {
+/** A changed document as it reads now: markdown rendered, other text as is. */
+function DocPreview({ file }: { file: DiffFile }) {
+  return (
+    <div className="max-h-[560px] overflow-y-auto rounded-[9px] border border-border bg-bg px-5 py-4">
+      {isMarkdown(file.path) ? (
+        <div className="md doc text-[14px] leading-relaxed">
+          <Markdown>{file.preview}</Markdown>
+        </div>
+      ) : (
+        <pre className="text-[13px] leading-relaxed whitespace-pre-wrap">{file.preview}</pre>
+      )}
+    </div>
+  );
+}
+
+function FileRow({ file, included, onToggle, startOpen }: { file: DiffFile; included: boolean; onToggle: () => void; startOpen: boolean }) {
   const t = useTranslations("decide");
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(startOpen);
+  const [view, setView] = useState<"preview" | "changes">(file.preview !== undefined ? "preview" : "changes");
   return (
     <div className="border-t border-border first:border-t-0">
       <div className="flex items-center gap-2.5 px-3.5 py-[11px] text-[13px]">
@@ -61,8 +77,24 @@ function FileRow({ file, included, onToggle }: { file: DiffFile; included: boole
         </span>
       </div>
       {open && (
-        <div className="px-3.5 pb-3">
-          <DiffLines patch={file.patch} />
+        <div className="flex flex-col gap-2 px-3.5 pb-3">
+          {file.preview !== undefined && (
+            <div role="tablist" className="flex w-fit rounded-[9px] border border-border bg-bg p-[3px] text-[12.5px]">
+              {(["preview", "changes"] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  role="tab"
+                  aria-selected={view === v}
+                  onClick={() => setView(v)}
+                  className={cn("rounded-md px-2.5 py-1", view === v ? "bg-panel-2 text-text" : "text-muted hover:text-text")}
+                >
+                  {t(v)}
+                </button>
+              ))}
+            </div>
+          )}
+          {view === "preview" && file.preview !== undefined ? <DocPreview file={file} /> : <DiffLines patch={file.patch} />}
         </div>
       )}
     </div>
@@ -80,6 +112,7 @@ export function DecideView({ taskId }: { taskId: string }) {
   const { refreshTasks, crews } = useAppState();
   const flowName = useFlowName();
   const { task } = useTaskStream(taskId);
+  const accept = useAcceptWords(task?.workspaceId);
   const [files, setFiles] = useState<DiffFile[] | null>(null);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [ruleState, setRuleState] = useState<"idle" | "added" | "dismissed">("idle");
@@ -162,7 +195,7 @@ export function DecideView({ taskId }: { taskId: string }) {
               {t("back")}
             </Link>
             <div className="flex flex-wrap items-center gap-2.5">
-              <Chip tone={v?.approved ? "success" : "warning"}>{v?.approved ? tr("ready") : tr("concerns")}</Chip>
+              <Chip tone={v?.approved ? "success" : "warning"}>{v?.approved ? tr(accept ? "readyAccept" : "ready") : tr("concerns")}</Chip>
               <span className="text-[12.5px] text-muted">
                 {flowName(flowOf(task))} · {tr(v?.approved ? "approvedBy" : "notApproved", { name: name(reviewer), count: task.round })} ·{" "}
                 <span className="font-mono">{formatCost(task.costUsd, locale)}</span>
@@ -179,7 +212,7 @@ export function DecideView({ taskId }: { taskId: string }) {
               </div>
             </Card>
             <Card className="flex flex-col gap-2.5 p-4">
-              <SectionLabel>{t("howWeKnow")}</SectionLabel>
+              <SectionLabel>{t(accept ? "howWeKnowAccept" : "howWeKnow")}</SectionLabel>
               {checks.length === 0 ? (
                 <p className="text-[13px] text-muted">
                   <Link href="/settings" className="underline">
@@ -224,7 +257,7 @@ export function DecideView({ taskId }: { taskId: string }) {
           <section aria-label={t("files")} className="overflow-hidden rounded-2xl border border-border bg-panel">
             <div className="flex flex-wrap items-center gap-2.5 border-b border-border px-3.5 py-3">
               <SectionLabel>{t("files")}</SectionLabel>
-              <span className="text-[12.5px] text-muted">{t("filesHint")}</span>
+              <span className="text-[12.5px] text-muted">{t(accept ? "filesHintAccept" : "filesHint")}</span>
               {files && (
                 <span className="ml-auto font-mono text-[12.5px]">
                   <span className="text-success">+{files.reduce((s, f) => s + f.additions, 0)}</span>{" "}
@@ -239,7 +272,16 @@ export function DecideView({ taskId }: { taskId: string }) {
             ) : files.length === 0 ? (
               <p className="p-4 text-[13px] text-muted">{t("noFiles")}</p>
             ) : (
-              files.map((f) => <FileRow key={f.path} file={f} included={!excluded.has(f.path)} onToggle={() => toggle(f.path)} />)
+              files.map((f, i) => (
+                <FileRow
+                  key={f.path}
+                  file={f}
+                  included={!excluded.has(f.path)}
+                  onToggle={() => toggle(f.path)}
+                  // Outside code, the first few documents open as a preview: reading them is the review.
+                  startOpen={accept && f.preview !== undefined && i < 3}
+                />
+              ))
             )}
           </section>
 
@@ -304,7 +346,7 @@ export function DecideView({ taskId }: { taskId: string }) {
           )}
           <Button variant="primary" className="ml-auto h-[38px]" disabled={includedCount === 0 || busy !== null} onClick={() => act("merge")}>
             {busy === "merge" ? <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> : <GitMerge className="size-4" aria-hidden="true" />}
-            {busy === "merge" ? t("merging") : t("merge", { count: includedCount, branch })}
+            {busy === "merge" ? t(accept ? "mergingAccept" : "merging") : accept ? t("mergeAccept", { count: includedCount }) : t("merge", { count: includedCount, branch })}
           </Button>
         </div>
       </footer>

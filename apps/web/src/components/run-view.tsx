@@ -7,7 +7,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { GitBranch, Loader2, Play, Square, Trash2 } from "lucide-react";
 import { isActive, isFinished, type Actor, type RunEvent } from "@forgeboard/shared";
 import { api } from "@/lib/api";
-import { useAppState, WorkspaceScope } from "@/lib/app-state";
+import { useAcceptWords, useAppState, WorkspaceScope } from "@/lib/app-state";
 import { flowActors, flowOf, roleOfIn } from "@/lib/flow-view";
 import { lastHandBack, nodeStates, runBounds, segments } from "@/lib/run-model";
 import { useTaskStream } from "@/lib/use-task-stream";
@@ -48,6 +48,7 @@ export function RunView({ taskId }: { taskId: string }) {
   const { refreshTasks, workspace, repo, crews } = useAppState();
   const flowName = useFlowName();
   const { task, events: allEvents, error } = useTaskStream(taskId);
+  const accept = useAcceptWords(task?.workspaceId);
   /** While replaying, how many events are shown. */
   const [replayAt, setReplayAt] = useState<number | null>(null);
   const events = useMemo(() => (replayAt === null ? allEvents : allEvents.slice(0, replayAt)), [allEvents, replayAt]);
@@ -141,7 +142,7 @@ export function RunView({ taskId }: { taskId: string }) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="truncate text-base font-semibold">{task.title}</h1>
-            <StatusChip status={task.status}>
+            <StatusChip status={task.status} workspaceId={task.workspaceId}>
               {task.round > 0 && !isFinished(task.status) && <span className="text-muted">· {t("roundDivider", { round: task.round })}</span>}
             </StatusChip>
           </div>
@@ -180,7 +181,7 @@ export function RunView({ taskId }: { taskId: string }) {
           )}
           {task.status === "review" && (
             <Link href={`/runs/${task.id}/decide`} className={buttonClass("primary")}>
-              {t("reviewMerge")}
+              {t(accept ? "reviewMergeAccept" : "reviewMerge")}
             </Link>
           )}
           {live && (

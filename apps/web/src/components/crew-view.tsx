@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { Check, Loader2, Plus, RotateCcw, Trash2 } from "lucide-react";
-import { MAX_AGENTS, TEAM_TEMPLATES, type Agent, type AgentRole, type Locale, type Personality, type ProviderId, type Team } from "@forgeboard/shared";
+import { MAX_AGENTS, TEAM_TEMPLATES, WORK_KINDS, type Agent, type AgentRole, type ForgeCommands, type Locale, type Personality, type ProviderId, type Team, type WorkKind } from "@forgeboard/shared";
 import { api } from "@/lib/api";
 import { useAppState } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
@@ -21,7 +21,9 @@ export function AgentCard({ agent, workspaceId, teamId }: { agent: Agent; worksp
   const t = useTranslations("crew");
   const tc = useTranslations("common");
   const tws = useTranslations("wsSettings");
-  const { providers, refreshCrews, refreshWorkspaces, refreshTeams } = useAppState();
+  const { providers, refreshCrews, refreshWorkspaces, refreshTeams, teams } = useAppState();
+  // In a team whose builders only edit files, say so.
+  const filesOnly = teamId ? teams.find((x) => x.id === teamId)?.commands === "restricted" : false;
   const [draft, setDraft] = useState(agent);
   const [state, setState] = useState<"idle" | "saving" | "saved">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +70,7 @@ export function AgentCard({ agent, workspaceId, teamId }: { agent: Agent; worksp
             onChange={(e) => setDraft({ ...draft, name: e.target.value })}
             className="w-full rounded-md border border-transparent bg-transparent px-1 py-0.5 text-base font-semibold outline-none hover:border-border focus:border-border-strong"
           />
-          <div className="px-1 text-[12.5px] text-muted">{agent.role === "builder" ? t("roleBuilder") : agent.role === "lead" ? t("roleLead") : t("roleReviewer")}</div>
+          <div className="px-1 text-[12.5px] text-muted">{agent.role === "builder" ? (filesOnly ? t("roleMaker") : t("roleBuilder")) : agent.role === "lead" ? t("roleLead") : t("roleReviewer")}</div>
         </div>
         {workspaceId && agent.customized && <Chip tone="info">{t("customized")}</Chip>}
       </div>
@@ -356,13 +358,19 @@ function TemplateGallery({ onCreated }: { onCreated: (teamId: string) => void })
         <h2 className="text-base font-semibold">{t("templatesTitle")}</h2>
         <p className="mt-1 text-[13px] text-muted">{t("templatesBody")}</p>
       </div>
+      {(["code", "other"] as const).map((group) => (
+      <div key={group} className="flex flex-col gap-2.5">
+      <SectionLabel>{t(group === "code" ? "forCode" : "forOther").toUpperCase()}</SectionLabel>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3.5">
-        {TEAM_TEMPLATES.map((tpl) => {
+        {TEAM_TEMPLATES.filter((tpl) => (tpl.kind === "code") === (group === "code")).map((tpl) => {
           const flow = flows.find((f) => f.id === tpl.planning);
           return (
             <article key={tpl.id} className="flex flex-col gap-3 rounded-2xl border border-border bg-panel p-[18px]">
               <div>
-                <h3 className="text-[15px] font-semibold">{tpl.name[locale]}</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-[15px] font-semibold">{tpl.name[locale]}</h3>
+                  {tpl.kind !== "code" && <Chip className="ml-auto h-5">{t(`kinds.${tpl.kind}`)}</Chip>}
+                </div>
                 <p className="mt-1 text-[13px] text-muted">{tpl.description[locale]}</p>
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -385,6 +393,7 @@ function TemplateGallery({ onCreated }: { onCreated: (teamId: string) => void })
             </article>
           );
         })}
+        {group === "other" && (
         <article className="flex flex-col gap-3 rounded-2xl border border-dashed border-border p-[18px]">
           <div>
             <h3 className="text-[15px] font-semibold">{t("blankTitle")}</h3>
@@ -397,7 +406,10 @@ function TemplateGallery({ onCreated }: { onCreated: (teamId: string) => void })
             </Button>
           </div>
         </article>
+        )}
       </div>
+      </div>
+      ))}
       {error && <p className="text-xs text-danger">{error}</p>}
     </div>
   );
@@ -412,6 +424,9 @@ function TeamEditor({ team, onDeleted }: { team: Team; onDeleted: () => void }) 
   const [name, setName] = useState(team.name);
   const [description, setDescription] = useState(team.description);
   const [planning, setPlanning] = useState(team.planning);
+  const [kind, setKind] = useState<WorkKind>(team.kind ?? "code");
+  const [about, setAbout] = useState(team.about ?? "");
+  const [commands, setCommands] = useState<ForgeCommands>(team.commands ?? "standard");
   const [state, setState] = useState<"idle" | "saving" | "saved">("idle");
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -419,15 +434,24 @@ function TeamEditor({ team, onDeleted }: { team: Team; onDeleted: () => void }) 
     setName(team.name);
     setDescription(team.description);
     setPlanning(team.planning);
+    setKind(team.kind ?? "code");
+    setAbout(team.about ?? "");
+    setCommands(team.commands ?? "standard");
   }, [team]);
-  const dirty = name !== team.name || description !== team.description || planning !== team.planning;
+  const dirty =
+    name !== team.name ||
+    description !== team.description ||
+    planning !== team.planning ||
+    kind !== (team.kind ?? "code") ||
+    about !== (team.about ?? "") ||
+    commands !== (team.commands ?? "standard");
   const usedBy = workspaces.filter((w) => w.crewMode === "team" && w.teamId === team.id);
 
   async function save() {
     setState("saving");
     setError(null);
     try {
-      await api.updateTeam(team.id, { name: name.trim(), description: description.trim(), planning });
+      await api.updateTeam(team.id, { name: name.trim(), description: description.trim(), planning, kind, about: about.trim(), commands });
       await refreshTeams();
       setState("saved");
       setTimeout(() => setState("idle"), 1500);
@@ -485,6 +509,56 @@ function TeamEditor({ team, onDeleted }: { team: Team; onDeleted: () => void }) 
           </select>
           <span className="text-[12.5px] text-muted">{t("planningHint")}</span>
         </label>
+        <div className="grid gap-3 sm:grid-cols-[1fr_2fr]">
+          <label className="flex flex-col gap-1.5">
+            <SectionLabel>{t("kind").toUpperCase()}</SectionLabel>
+            <select
+              value={kind}
+              onChange={(e) => setKind(e.target.value as WorkKind)}
+              className="h-[34px] rounded-lg border border-border bg-panel-2 px-2.5 text-[13px] outline-none"
+            >
+              {WORK_KINDS.map((k) => (
+                <option key={k} value={k}>
+                  {t(`kinds.${k}`)}
+                </option>
+              ))}
+            </select>
+            <span className="text-[12.5px] text-muted">{t("kindHint")}</span>
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <SectionLabel>{t("about").toUpperCase()}</SectionLabel>
+            <textarea
+              value={about}
+              maxLength={1000}
+              rows={2}
+              placeholder={t("aboutPlaceholder")}
+              onChange={(e) => setAbout(e.target.value)}
+              className="resize-y rounded-lg border border-border bg-bg px-2.5 py-2 text-[13px] outline-none focus:border-border-strong"
+            />
+            <span className="text-[12.5px] text-muted">{t("aboutHint")}</span>
+          </label>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <SectionLabel>{t("commands").toUpperCase()}</SectionLabel>
+          <div role="radiogroup" aria-label={t("commands")} className="grid gap-2 sm:grid-cols-2">
+            {(["restricted", "standard"] as const).map((c) => (
+              <button
+                key={c}
+                type="button"
+                role="radio"
+                aria-checked={commands === c}
+                onClick={() => setCommands(c)}
+                className={cn(
+                  "flex flex-col items-start gap-0.5 rounded-lg border px-2.5 py-2 text-left",
+                  commands === c ? "border-border-strong bg-panel-2" : "border-border text-muted hover:text-text",
+                )}
+              >
+                <span className="text-[13px] font-medium">{t(c === "standard" ? "cmdStandard" : "cmdRestricted")}</span>
+                <span className="text-[12px] text-muted">{t(c === "standard" ? "cmdStandardHint" : "cmdRestrictedHint")}</span>
+              </button>
+            ))}
+          </div>
+        </div>
         <p className="text-[12.5px] text-muted">
           {usedBy.length ? t("usedBy", { names: usedBy.map((w) => w.name).join(", ") }) : t("unused")}
         </p>

@@ -2,6 +2,30 @@
 
 All notable changes to Forgeboard are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.4.0] — 2026-11-12
+
+Any kind of work: teams for docs, content, research, data and translation, in any folder.
+
+### Added
+
+- **Any folder, not only git repositories.** In "Choose folder…", a plain folder shows **Start tracking this folder**: one click runs `git init` and saves a first snapshot of what is there (a hidden `.git` folder; nothing else changes). Git stays under the hood for each task's own copy, the list of changes and "discard".
+- **Ready-made teams for other work**, in a new "For other work" group of the gallery:
+  - **Docs**: Lead, Writer and Editor;
+  - **Content**: Lead, Writer, Editor and Fact-checker;
+  - **Research brief**: Lead, Researcher and Fact-checker;
+  - **Data analysis**: Lead, Analyst and Reviewer (may run Python);
+  - **Translation**: Lead, Translator and Native reviewer.
+- **What a team works on** (Teams → a team): code, writing, research, data or other, plus a few words about the team that every member is told on every task.
+- **What a team's builders may run**: files only, or files and commands. A workspace set to Restricted still wins. Data teams in "files and commands" may also run Python (`python`, `pip`, `uv`, `jupyter`).
+- **Document preview on the review screen.** Changed markdown and text files open rendered, with their changes one click away. Outside code, the first documents open right away.
+- API: `POST /api/folders/track`; `kind`, `about` and `commands` on teams; `preview` on changed documents in `GET /api/tasks/:id/diff`.
+
+### Changed
+
+- Outside code, agents are told they work in a folder of files (not a git repository), questions are about "the files and the task" instead of "the code", and the words follow: **Accept** instead of Merge, "Review & accept", "Accepted".
+- "Repositories" are now **folders** in the UI.
+- When git has no name and email set up on this machine, Forgeboard's own commits use "Forgeboard" instead of failing.
+
 ## [2.3.0] — 2026-11-11
 
 Teams: build your own or start from a ready-made one.

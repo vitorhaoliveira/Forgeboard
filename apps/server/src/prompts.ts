@@ -15,6 +15,7 @@ import type {
   ReviewIssue,
   Task,
   Verdict,
+  WorkKind,
 } from "@forgeboard/shared";
 
 const MAX_DIFF_CHARS = 60_000;
@@ -36,12 +37,31 @@ const PERSONALITY: Record<Personality, string> = {
 function houseRules(rules: HouseRule[]): string {
   const active = rules.filter((r) => r.enabled);
   if (active.length === 0) return "";
-  return `\nHouse rules for this repository (always follow them):\n${active.map((r) => `- ${r.text}`).join("\n")}\n`;
+  return `\nHouse rules (always follow them):\n${active.map((r) => `- ${r.text}`).join("\n")}\n`;
 }
 
-function header(agent: Agent, role: string, task: Task, rules: HouseRule[]): string {
+/** What the team works on: code (the default) or other work in a folder of files. */
+export interface WorkContext {
+  kind: WorkKind;
+  /** The team's own words about its work. */
+  about: string;
+}
+
+export const CODE_WORK: WorkContext = { kind: "code", about: "" };
+
+function where(work: WorkContext): string {
+  if (work.kind === "code") {
+    return `working on a git repository.${work.about ? `\nWhat this team works on: ${work.about}` : ""}`;
+  }
   return [
-    `You are ${agent.name}, the ${role} in a small crew of AI agents working on a git repository.`,
+    `working in a folder of files${work.about ? ` for this team: ${work.about}` : "."}`,
+    "The folder is tracked with git only so the user can review your changes; you don't need git.",
+  ].join("\n");
+}
+
+function header(agent: Agent, role: string, task: Task, rules: HouseRule[], work: WorkContext = CODE_WORK): string {
+  return [
+    `You are ${agent.name}, the ${role} in a small crew of AI agents ${where(work)}`,
     language(task.locale),
     PERSONALITY[agent.personality],
     agent.instructions ? `Extra instructions from the user: ${agent.instructions}` : "",
@@ -57,6 +77,7 @@ const ASSUMPTIONS_MARKER = "FORGEBOARD_ASSUMPTIONS:";
 export interface ForgeStyle {
   askMode: AskMode;
   planFirst: boolean;
+  work?: WorkContext;
 }
 
 export const DEFAULT_STYLE: ForgeStyle = { askMode: "ask", planFirst: true };
@@ -73,15 +94,23 @@ const FORM_FIELDS = `  Field types (at most 6 fields):
  * (answers, fixes, notes, messages), so a new list of decisions replaces the previous one.
  */
 function forgeEnding(style: ForgeStyle, followUp = true): string {
-  const lines = ["", "How to finish:", "- Work only inside the current directory. Do not commit, create branches or push: the user reviews and merges."];
+  const source = (style.work ?? CODE_WORK).kind === "code" ? "the code" : "the files and the task";
+  const code = (style.work ?? CODE_WORK).kind === "code";
+  const lines = [
+    "",
+    "How to finish:",
+    code
+      ? "- Work only inside the current directory. Do not commit, create branches or push: the user reviews and merges."
+      : "- Work only inside the current directory. Do not use git: the user reviews your changes and accepts them.",
+  ];
   if (style.askMode === "decide") {
     lines.push(
-      "- Don't stop to ask. When a product decision isn't clear from the code, pick the option that best fits the existing conventions and keep going.",
+      `- Don't stop to ask. When a decision isn't clear from ${source}, pick the option that best fits the existing conventions and keep going.`,
       `- Only if a wrong guess would be destructive or very expensive to undo (data loss, a public API, security), stop and end your final message with exactly one line:\n  ${QUESTION_MARKER} {"question": "...", "context": "one sentence on why it matters", "options": ["short option", "short option"], "suggested": 0}`,
     );
   } else {
     lines.push(
-      `- If you truly need a product decision you cannot infer from the code, stop and end your final message with exactly one line:\n  ${QUESTION_MARKER} {"question": "...", "context": "one sentence on why it matters", "options": ["short option", "short option"], "suggested": 0}\n  Only ask when guessing wrong would waste real work.`,
+      `- If you truly need a decision you cannot infer from ${source}, stop and end your final message with exactly one line:\n  ${QUESTION_MARKER} {"question": "...", "context": "one sentence on why it matters", "options": ["short option", "short option"], "suggested": 0}\n  Only ask when guessing wrong would waste real work.`,
       `- When you need several decisions at once, ask with a form instead, as exactly one line at the very end:\n  ${FORM_MARKER} {"kind": "questions", "title": "...", "context": "one or two sentences", "fields": [...]}`,
     );
   }
@@ -130,13 +159,19 @@ const RESTRICTED_NOTE = `
 Commands: in this workspace you can only edit files and use read-only git and ls. Don't try to install packages or run tests; Forgeboard runs the repository's checks after you finish and sends you any failures.
 `;
 
+const FILES_ONLY_NOTE = `
+Commands: you only edit files here (read-only git and ls are fine). There is nothing to install or run.
+`;
+
 const FILE_TOOLS_NOTE =
   "Create and change files with your file-editing tools, not with shell redirection or in-place edits (cat >, echo >, tee, sed -i): those commands can be refused, which wastes a step.";
 
 export function forgeStartPrompt(agent: Agent, task: Task, rules: HouseRule[], commands: ForgeCommands = "standard", style: ForgeStyle = DEFAULT_STYLE): string {
-  return `${header(agent, "builder", task, rules)}
+  const work = style.work ?? CODE_WORK;
+  const note = commands !== "restricted" ? "" : work.kind === "code" ? RESTRICTED_NOTE : FILES_ONLY_NOTE;
+  return `${header(agent, "builder", task, rules, work)}
 ${FILE_TOOLS_NOTE}
-${commands === "restricted" ? RESTRICTED_NOTE : ""}
+${note}
 Your task:
 ${task.prompt}
 ${forgeEnding(style, false)}`;
@@ -199,14 +234,17 @@ export function hawkPrompt(
   diffText: string,
   checks: CheckResult[],
   yourWords: string[] = [],
+  work: WorkContext = CODE_WORK,
 ): string {
   const diff =
     diffText.length > MAX_DIFF_CHARS ? `${diffText.slice(0, MAX_DIFF_CHARS)}\n… (diff truncated, read files for the rest)` : diffText;
   const checkLines = checks.length
     ? checks.map((c) => `- ${c.name} (\`${c.command}\`): ${c.ok ? "passed" : "FAILED"}`).join("\n")
-    : "- No checks are configured for this repository.";
+    : work.kind === "code"
+      ? "- No checks are configured for this repository."
+      : "- No checks run for this folder.";
 
-  return `${header(agent, "reviewer", task, rules)}
+  return `${header(agent, "reviewer", task, rules, work)}
 
 You review, you never modify files. Review the change made for this task:
 ${task.prompt}
@@ -348,15 +386,17 @@ export function leadPrompt(
   team: Teammate[],
   checks: string[],
   replan?: { note: string; previous: string },
+  work: WorkContext = CODE_WORK,
+  canRun = true,
 ): string {
   const roster = team
     .map(
       (m) =>
-        `- id "${m.id}" · ${m.name} · ${m.role === "builder" ? "builds: edits files and runs commands" : "reviews: reads the change, approves it or sends it back"}${m.instructions ? `. Instructions: ${m.instructions}` : ""}`,
+        `- id "${m.id}" · ${m.name} · ${m.role === "builder" ? (canRun ? "builds: edits files and runs commands" : "makes: edits files") : "reviews: reads the change, approves it or sends it back"}${m.instructions ? `. Instructions: ${m.instructions}` : ""}`,
     )
     .join("\n");
   const pt = task.locale === "pt-BR";
-  return `${header(agent, "lead", task, rules)}
+  return `${header(agent, "lead", task, rules, work)}
 
 You plan which teammates work on this task. You never edit files or run commands; read files only if you need to understand the task.
 
@@ -366,7 +406,7 @@ ${task.prompt}
 Your team:
 ${roster}
 
-Checks this repository runs: ${checks.length ? checks.join(", ") : "none configured"}.
+Checks ${work.kind === "code" ? "this repository" : "this folder"} runs: ${checks.length ? checks.join(", ") : "none configured"}.
 ${
   replan
     ? `\nYou proposed this plan:\n${replan.previous}\n\nThe user asked for another one: ${replan.note}\nPlan again with that in mind.\n`

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, statSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { DiffFile } from "@forgeboard/shared";
@@ -106,7 +106,7 @@ export async function commit(worktree: string, message: string): Promise<void> {
   await stageAll(worktree);
   const staged = (await git(worktree, ["diff", "--cached", "--name-only"])).trim();
   if (!staged) throw new GitError("There are no changes left to merge.");
-  await git(worktree, ["commit", "-m", message]);
+  await git(worktree, [...(await identityArgs(worktree)), "commit", "-m", message]);
 }
 
 export async function merge(repoPath: string, branch: string, baseBranch: string): Promise<void> {
@@ -116,7 +116,7 @@ export async function merge(repoPath: string, branch: string, baseBranch: string
       `Your repository is on "${current}", but this task started from "${baseBranch}". Check out "${baseBranch}" and try again.`,
     );
   }
-  await git(repoPath, ["merge", "--no-ff", "--no-edit", branch]);
+  await git(repoPath, [...(await identityArgs(repoPath)), "merge", "--no-ff", "--no-edit", branch]);
 }
 
 export async function removeWorktree(repoPath: string, worktree: string): Promise<void> {
@@ -128,4 +128,36 @@ export async function removeWorktree(repoPath: string, worktree: string): Promis
 
 export async function deleteBranch(repoPath: string, branch: string): Promise<void> {
   await git(repoPath, ["branch", "-D", branch]).catch(() => undefined);
+}
+
+/** Commits made by Forgeboard when git has no name and email set up on this machine. */
+async function identityArgs(cwd: string): Promise<string[]> {
+  const email = await git(cwd, ["config", "user.email"]).then(
+    (s) => s.trim(),
+    () => "",
+  );
+  return email ? [] : ["-c", "user.name=Forgeboard", "-c", "user.email=forgeboard@localhost"];
+}
+
+/** Starts tracking a plain folder: `git init` and a first commit of everything in it. */
+export async function trackFolder(path: string): Promise<void> {
+  await git(path, ["init"]);
+  await git(path, ["add", "-A"]);
+  await git(path, [...(await identityArgs(path)), "commit", "--allow-empty", "-m", "Start tracking with Forgeboard"]);
+}
+
+const MAX_PREVIEW_BYTES = 200_000;
+
+/** Documents among the changed files get their current text, to show them rendered. */
+export function withPreviews(worktree: string, files: DiffFile[], isDocument: (path: string) => boolean): DiffFile[] {
+  return files.map((f) => {
+    if (f.status === "deleted" || !isDocument(f.path)) return f;
+    const full = join(worktree, f.path);
+    try {
+      if (statSync(full).size > MAX_PREVIEW_BYTES) return f;
+      return { ...f, preview: readFileSync(full, "utf8") };
+    } catch {
+      return f;
+    }
+  });
 }
