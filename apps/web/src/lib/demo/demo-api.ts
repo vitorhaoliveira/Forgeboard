@@ -12,9 +12,11 @@ import type {
   CreateWorkspaceInput,
   DiffFile,
   Flow,
+  FlowStep,
   FolderListing,
   HouseRule,
   Locale,
+  NodeState,
   ProviderInfo,
   Repo,
   RuleScope,
@@ -27,13 +29,16 @@ import type {
   Verdict,
   Workspace,
 } from "@forgeboard/shared";
-import { BUILD_AND_REVIEW, isDocument, LEAD_DECIDES, TEAM_TEMPLATES, templateMembers } from "@forgeboard/shared";
+import { BUILD_AND_REVIEW, isDocument, LEAD_DECIDES, LEAD_DECIDES_ID, TEAM_TEMPLATES, templateMembers } from "@forgeboard/shared";
 import type { Api, StreamHandlers } from "../api";
 import { sanitizeAnswer } from "@forgeboard/shared/a2ui";
 import {
   API_CHECKS,
   apiValidationScenario,
   BLOG_CHECKS,
+  docPatch,
+  faqDiff,
+  guideDiff,
   paginationScenario,
   pixScenario,
   settingsScenario,
@@ -282,6 +287,335 @@ function runInstant(taskId: string, steps: Step[], startMs: number): Step[] {
   return steps.slice(i);
 }
 
+// ---------- Lead-planned runs (Docs team) ----------
+
+const at = (taskId: string, n: string, state: NodeState) => emit(taskId, { type: "node", actor: "system", node: n, state });
+
+function addCost(taskId: string, usd: number) {
+  patchTask(taskId, { costUsd: s().tasks.find((t) => t.id === taskId)!.costUsd + usd });
+}
+
+/** The run starts and the Lead plans who does what. */
+function leadPlanSteps(taskId: string, intro: string, look: ToolStep[], summary: string, steps: FlowStep[], reasons: Record<string, string>): Step[] {
+  return [
+    step(200, () => setStatus(taskId, "running")),
+    step(100, () => at(taskId, "task", "done")),
+    step(100, () => {
+      patchTask(taskId, { round: 1, branch: `fb/${taskId.slice(0, 5)}`, baseBranch: "main" });
+      emit(taskId, { type: "round", actor: "system", round: 1 });
+    }),
+    step(300, () => at(taskId, "lead", "active")),
+    step(600, () => emit(taskId, { type: "text", actor: "lead", text: intro })),
+    ...toolSteps(taskId, "lead", look),
+    step(900, () => {
+      patchTask(taskId, { flow: { ...LEAD_DECIDES, steps: [LEAD_DECIDES.steps[0]!, ...steps] }, plan: { by: "lead", summary, reasons, revisions: 0 } });
+      emit(taskId, { type: "plan", actor: "lead", summary, steps, reasons });
+      addCost(taskId, 0.04);
+      at(taskId, "lead", "done");
+    }),
+  ];
+}
+
+/** A builder step: it works on files and says what it did. */
+function writeSteps(taskId: string, stepId: string, actor: string, intro: string, tools: ToolStep[], summary: string): Step[] {
+  return [
+    step(300, () => at(taskId, stepId, "active")),
+    step(600, () => emit(taskId, { type: "text", actor, text: intro })),
+    ...toolSteps(taskId, actor, tools),
+    step(500, () => {
+      emit(taskId, { type: "step_done", actor, summary, costUsd: 0, durationMs: 8300 });
+      patchTask(taskId, { summary });
+      addCost(taskId, 0.12);
+      at(taskId, stepId, "done");
+    }),
+  ];
+}
+
+/** A reviewer step: it reads the work and gives its verdict. */
+function editSteps(taskId: string, stepId: string, actor: string, file: string, verdict: Verdict, round: number): Step[] {
+  const L = s().locale;
+  return [
+    step(300, () => at(taskId, stepId, "active")),
+    step(500, () => emit(taskId, { type: "text", actor, text: tr(L, "Reading the changes next to the other documents.", "Lendo as mudanças junto com os outros documentos.") })),
+    ...toolSteps(taskId, actor, [{ name: "Read", input: { file_path: file }, output: "…" }]),
+    step(900, () => {
+      emit(taskId, { type: "verdict", actor, verdict, round });
+      patchTask(taskId, { verdict });
+      addCost(taskId, 0.05);
+      at(taskId, stepId, verdict.approved ? "done" : "warn");
+    }),
+  ];
+}
+
+function sendBackSteps(taskId: string, from: { step: string; actor: string }, to: { step: string; actor: string }, count: number): Step[] {
+  return [
+    step(400, () => emit(taskId, { type: "handoff", actor: from.actor, to: to.actor, label: String(count), fromStep: from.step, toStep: to.step })),
+    step(200, () => {
+      const round = s().tasks.find((t) => t.id === taskId)!.round + 1;
+      patchTask(taskId, { round });
+      emit(taskId, { type: "round", actor: "system", round });
+    }),
+  ];
+}
+
+const toReview = (taskId: string): Step =>
+  step(300, () => {
+    at(taskId, "you", "active");
+    setStatus(taskId, "review");
+  });
+
+const WRITER = { id: "writer", type: "agent", agentId: "writer" } as const satisfies FlowStep;
+const EDITOR = { id: "editor", type: "agent", agentId: "editor", sendBackTo: "writer" } as const satisfies FlowStep;
+
+/** The getting started guide: the Editor stays stuck on one point, and the Lead changes the plan. */
+function guideRun(taskId: string): Step[] {
+  const L = s().locale;
+  const guide = "docs/getting-started.md";
+  const writer = { step: "writer", actor: "writer" };
+  const editor = { step: "editor", actor: "editor" };
+  const writer2: FlowStep = { id: "writer-2", type: "agent", agentId: "writer" };
+  const editor2: FlowStep = { id: "editor-2", type: "agent", agentId: "editor", sendBackTo: "writer-2" };
+  return [
+    ...leadPlanSteps(
+      taskId,
+      tr(L, "Seeing what the help center already has.", "Vendo o que a central de ajuda já tem."),
+      [{ name: "Glob", input: { pattern: "docs/**/*.md" }, output: "docs/faq.md\ndocs/collections.md\ndocs/pricing.md" }],
+      tr(L, "A new guide: Writer writes it, Editor checks it against the other documents.", "Um guia novo: o Writer escreve e o Editor confere com os outros documentos."),
+      [WRITER, EDITOR],
+      {
+        writer: tr(L, "A guide for new users, in the tone the FAQ already uses.", "Um guia para quem está começando, no tom que o FAQ já usa."),
+        editor: tr(L, "Menu names and links must match the other documents.", "Nomes de menu e links precisam bater com os outros documentos."),
+      },
+    ),
+    ...writeSteps(
+      taskId,
+      "writer",
+      "writer",
+      tr(L, "Reading the FAQ to match its tone, then writing the guide.", "Lendo o FAQ para seguir o tom e depois escrevendo o guia."),
+      [
+        { name: "Read", input: { file_path: "docs/faq.md" }, output: "# Frequently asked questions\n…" },
+        { name: "Write", input: { file_path: guide }, output: "File created." },
+      ],
+      tr(L, "Wrote `getting-started.md`: four steps from sign-up to the first published article.", "Escrevi o `getting-started.md`: quatro passos do cadastro ao primeiro artigo publicado."),
+    ),
+    ...editSteps(
+      taskId,
+      "editor",
+      "editor",
+      guide,
+      {
+        approved: false,
+        risk: "medium",
+        summary: tr(L, "Clear, but one menu name is wrong and a step has no example.", "Claro, mas um nome de menu está errado e um passo não tem exemplo."),
+        issues: [
+          { severity: "high", message: tr(L, "Step 2 says “Settings › Team”, but the app and faq.md call it “Workspace › Members”.", "O passo 2 diz “Configurações › Time”, mas o app e o faq.md chamam de “Espaço › Membros”."), file: guide, line: 13 },
+          { severity: "medium", message: tr(L, "No example for inviting someone.", "Falta um exemplo de convite."), file: guide, line: 15 },
+        ],
+      },
+      1,
+    ),
+    ...sendBackSteps(taskId, editor, writer, 2),
+    ...writeSteps(
+      taskId,
+      "writer",
+      "writer",
+      tr(L, "Fixing the menu name and adding an example.", "Corrigindo o nome do menu e adicionando um exemplo."),
+      [{ name: "Edit", input: { file_path: guide }, output: "The file has been updated." }],
+      tr(L, "Step 2 now says “Workspace › Members” and shows an example invite. Added SSO to step 1.", "O passo 2 agora diz “Espaço › Membros” e mostra um convite de exemplo. Coloquei o SSO no passo 1."),
+    ),
+    ...editSteps(
+      taskId,
+      "editor",
+      "editor",
+      guide,
+      {
+        approved: false,
+        risk: "medium",
+        summary: tr(L, "The menu is fixed, but the guide now promises SSO to everyone.", "O menu foi corrigido, mas agora o guia promete SSO para todos."),
+        issues: [
+          { severity: "high", message: tr(L, "SSO is only on the Business plan (pricing.md). Step 1 offers it to every account.", "O SSO só existe no plano Business (pricing.md). O passo 1 oferece para todas as contas."), file: guide, line: 7 },
+        ],
+      },
+      2,
+    ),
+    // The Editor's last round, still not approved: the Lead decides.
+    step(400, () => at(taskId, "lead", "active")),
+    step(700, () => emit(taskId, { type: "text", actor: "lead", text: tr(L, "The review is stuck. Checking what's left.", "A revisão travou. Vendo o que falta.") })),
+    ...toolSteps(taskId, "lead", [{ name: "Read", input: { file_path: "docs/pricing.md" }, output: tr(L, "## Business\n- Single sign-on (SSO)\n- Custom domain", "## Business\n- Login único (SSO)\n- Domínio próprio") }]),
+    step(900, () => {
+      const steps = [writer2, editor2];
+      const why = tr(
+        L,
+        "What's left is about plans, not wording: Writer moves SSO to a Plans section based on pricing.md, and the Editor checks it once more.",
+        "O que falta é sobre planos, não sobre texto: o Writer leva o SSO para uma seção de Planos com base no pricing.md, e o Editor confere mais uma vez.",
+      );
+      const task = s().tasks.find((t) => t.id === taskId)!;
+      const plan = task.plan!;
+      patchTask(taskId, {
+        flow: { ...task.flow!, steps: [...task.flow!.steps, ...steps] },
+        plan: {
+          ...plan,
+          checkpoints: 1,
+          reasons: {
+            ...plan.reasons,
+            "writer-2": tr(L, "Move SSO to a Plans section, as pricing.md says.", "Levar o SSO para uma seção de Planos, como diz o pricing.md."),
+            "editor-2": tr(L, "One more look at the plans part.", "Mais uma olhada na parte de planos."),
+          },
+        },
+        maxRounds: task.round + 2,
+      });
+      emit(taskId, { type: "checkpoint", actor: "lead", kind: "stuck", action: "replan", why, steps });
+      addCost(taskId, 0.03);
+      at(taskId, "lead", "done");
+    }),
+    step(200, () => {
+      const round = s().tasks.find((t) => t.id === taskId)!.round + 1;
+      patchTask(taskId, { round });
+      emit(taskId, { type: "round", actor: "system", round });
+    }),
+    ...writeSteps(
+      taskId,
+      "writer-2",
+      "writer",
+      tr(L, "Checking pricing.md and moving SSO to its own section.", "Conferindo o pricing.md e levando o SSO para uma seção própria."),
+      [
+        { name: "Read", input: { file_path: "docs/pricing.md" }, output: "…" },
+        { name: "Edit", input: { file_path: guide }, output: "The file has been updated." },
+        { name: "Edit", input: { file_path: "docs/faq.md" }, output: "The file has been updated." },
+      ],
+      tr(L, "SSO and custom domains are now in a Plans section that links to pricing.md. The FAQ links to the guide.", "SSO e domínio próprio agora ficam numa seção de Planos com link para o pricing.md. O FAQ aponta para o guia."),
+    ),
+    ...editSteps(
+      taskId,
+      "editor-2",
+      "editor",
+      guide,
+      {
+        approved: true,
+        risk: "low",
+        summary: tr(L, "Clear, accurate and consistent with the FAQ and pricing. Ready to publish.", "Claro, correto e consistente com o FAQ e os preços. Pronto para publicar."),
+        issues: [],
+        suggestedRule: tr(L, "Mention plan limits only in a Plans section that links to pricing.md.", "Citar limites de plano só numa seção de Planos com link para o pricing.md."),
+      },
+      3,
+    ),
+    toReview(taskId),
+  ];
+}
+
+/** New prices in the FAQ: the Writer asks about the currency, the Lead suggests an answer and waits for you. */
+function faqRun(taskId: string): Step[] {
+  const L = s().locale;
+  const options = [tr(L, "Reais (R$)", "Reais (R$)"), tr(L, "Dollars (US$)", "Dólares (US$)"), tr(L, "Both", "Os dois")];
+  const why = tr(
+    L,
+    "pricing.md is the source of truth and every other page uses R$. Not sure if the FAQ also serves customers abroad, so it's your call.",
+    "O pricing.md é a fonte oficial e as outras páginas usam R$. Não sei se o FAQ também atende clientes de fora, então a decisão é sua.",
+  );
+  const question = {
+    question: tr(L, "The FAQ quotes prices in dollars, but pricing.md is in reais. Which currency should the FAQ use?", "O FAQ mostra os preços em dólar, mas o pricing.md está em reais. Qual moeda o FAQ deve usar?"),
+    options,
+    askedBy: "writer",
+  };
+  return [
+    ...leadPlanSteps(
+      taskId,
+      tr(L, "Looking for every place that shows a price.", "Procurando todo lugar que mostra preço."),
+      [{ name: "Grep", input: { pattern: "US\\$|R\\$" }, output: "docs/faq.md:20\ndocs/pricing.md:4\ndocs/pricing.md:9" }],
+      tr(L, "A small text change: Writer updates the FAQ, Editor checks the numbers.", "Uma mudança pequena de texto: o Writer atualiza o FAQ e o Editor confere os números."),
+      [WRITER, EDITOR],
+      {
+        writer: tr(L, "Only the FAQ quotes the old prices.", "Só o FAQ mostra os preços antigos."),
+        editor: tr(L, "Prices must match pricing.md exactly.", "Os preços precisam bater exatamente com o pricing.md."),
+      },
+    ),
+    step(300, () => at(taskId, "writer", "active")),
+    step(600, () => emit(taskId, { type: "text", actor: "writer", text: tr(L, "Comparing the FAQ with the pricing page.", "Comparando o FAQ com a página de preços.") })),
+    ...toolSteps(taskId, "writer", [
+      { name: "Read", input: { file_path: "docs/faq.md" }, output: "…" },
+      { name: "Read", input: { file_path: "docs/pricing.md" }, output: "…" },
+    ]),
+    step(700, () => {
+      emit(taskId, { type: "question", actor: "writer", question });
+      addCost(taskId, 0.06);
+    }),
+    // The Lead reads the question first.
+    step(300, () => at(taskId, "lead", "active")),
+    step(1200, () => {
+      emit(taskId, { type: "checkpoint", actor: "lead", kind: "question", action: "you", why, answer: options[0], to: "writer" });
+      const task = s().tasks.find((t) => t.id === taskId)!;
+      patchTask(taskId, { plan: { ...task.plan!, answers: 1 } });
+      addCost(taskId, 0.02);
+      at(taskId, "lead", "done");
+      at(taskId, "writer", "warn");
+      at(taskId, "you", "active");
+      setStatus(taskId, "waiting", { question: { ...question, suggested: 0, leadAnswer: { by: "lead", answer: options[0]!, why } } });
+    }),
+    pause,
+    ...writeSteps(
+      taskId,
+      "writer",
+      "writer",
+      tr(L, "Updating the prices in the FAQ.", "Atualizando os preços no FAQ."),
+      [{ name: "Edit", input: { file_path: "docs/faq.md" }, output: "The file has been updated." }],
+      tr(L, "The FAQ now shows R$ 49 and R$ 149, the same as pricing.md.", "O FAQ agora mostra R$ 49 e R$ 149, igual ao pricing.md."),
+    ),
+    ...editSteps(taskId, "editor", "editor", "docs/faq.md", { approved: true, risk: "low", summary: tr(L, "Prices match pricing.md. Ready to publish.", "Os preços batem com o pricing.md. Pronto para publicar."), issues: [] }, 1),
+    toReview(taskId),
+  ];
+}
+
+/** A new task in the Docs workspace: the Lead plans Writer → Editor, and the document is written. */
+function docRun(taskId: string, title: string, path: string): Step[] {
+  const L = s().locale;
+  return [
+    ...leadPlanSteps(
+      taskId,
+      tr(L, `On it: “${title}”. Seeing what the folder already has.`, `Começando: “${title}”. Vendo o que a pasta já tem.`),
+      [{ name: "Glob", input: { pattern: "docs/**/*.md" }, output: "docs/faq.md\ndocs/collections.md\ndocs/pricing.md" }],
+      tr(L, "Writer writes it, Editor checks it against the other documents.", "O Writer escreve e o Editor confere com os outros documentos."),
+      [WRITER, EDITOR],
+      {
+        writer: tr(L, "A new document, in the tone the folder already uses.", "Um documento novo, no tom que a pasta já usa."),
+        editor: tr(L, "Terms and links must match the other documents.", "Termos e links precisam bater com os outros documentos."),
+      },
+    ),
+    ...writeSteps(
+      taskId,
+      "writer",
+      "writer",
+      tr(L, "Writing it in the folder's tone.", "Escrevendo no tom da pasta."),
+      [
+        { name: "Read", input: { file_path: "docs/faq.md" }, output: "…" },
+        { name: "Write", input: { file_path: path }, output: "File created." },
+      ],
+      tr(L, `Wrote \`${path}\`.`, `Escrevi o \`${path}\`.`),
+    ),
+    ...editSteps(taskId, "editor", "editor", path, { approved: true, risk: "low", summary: tr(L, "Clear and consistent with the other documents. Ready to publish.", "Claro e consistente com os outros documentos. Pronto para publicar."), issues: [] }, 1),
+    toReview(taskId),
+  ];
+}
+
+function docFor(L: ReturnType<typeof s>["locale"], title: string): { path: string; diff: DiffFile[] } {
+  const slug = title.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "new-doc";
+  const path = `docs/${slug}.md`;
+  const body = tr(
+    L,
+    `# ${title}\n\nA short introduction: what this page covers and who it is for.\n\n## How it works\n\nOne idea per paragraph, with an example for each step.\n\n## Next steps\n\n- [Getting started](getting-started.md)\n- [Answers to common questions](faq.md)`,
+    `# ${title}\n\nUma introdução curta: o que esta página cobre e para quem é.\n\n## Como funciona\n\nUma ideia por parágrafo, com um exemplo para cada passo.\n\n## Próximos passos\n\n- [Primeiros passos](getting-started.md)\n- [Respostas para dúvidas comuns](faq.md)`,
+  );
+  return { path, diff: [docPatch(path, body)] };
+}
+
+/** A workspace whose team has a Writer and an Editor and lets the Lead decide. */
+function isDocsWorkspace(workspaceId: string, flowId?: string): boolean {
+  const st = s();
+  const w = st.workspaces.find((x) => x.id === workspaceId);
+  const team = w?.crewMode === "team" ? st.teams.find((x) => x.id === w.teamId) : undefined;
+  if (!team || !["lead", "writer", "editor"].every((m) => team.members.some((a) => a.id === m))) return false;
+  return (flowId ?? w?.defaultFlowId ?? team.planning) === LEAD_DECIDES_ID;
+}
+
 // ---------- Seed ----------
 
 function seed(locale: Locale): Store {
@@ -300,6 +634,25 @@ function seed(locale: Locale): Store {
   const acme = ws("Acme", "info", tr(L, "Work", "Trabalho"), "custom", 9000);
   const shop = ws("Loja da Ana", "success", "Freela", "default", 8000);
   const personal = ws(tr(L, "Personal", "Pessoal"), "violet", tr(L, "Studies", "Estudos"), "default", 7000);
+  // A docs workspace with a ready-made team: the Lead plans each task.
+  const docsTpl = TEAM_TEMPLATES.find((x) => x.id === "docs")!;
+  const docsTeam: Team = {
+    id: id(),
+    name: docsTpl.name[L],
+    description: docsTpl.description[L],
+    planning: docsTpl.planning,
+    kind: docsTpl.kind,
+    commands: docsTpl.commands,
+    about: tr(L, "The help center of our product, in Markdown.", "A central de ajuda do nosso produto, em Markdown."),
+    members: templateMembers(docsTpl, L),
+    templateId: docsTpl.id,
+    createdAt: iso(ago(6500)),
+  };
+  const docs: Workspace = {
+    ...ws(tr(L, "Help center", "Central de ajuda"), "warning", tr(L, "Product", "Produto"), "team", 6500),
+    teamId: docsTeam.id,
+    defaultFlowId: LEAD_DECIDES_ID,
+  };
   const repo = (w: Workspace, name: string, checks: CheckCommand[]): Repo => ({
     id: id(),
     workspaceId: w.id,
@@ -312,6 +665,7 @@ function seed(locale: Locale): Store {
   const acmeApi = repo(acme, "acme-api", API_CHECKS);
   const lojaRepo = repo(shop, "loja-ana", SHOP_CHECKS);
   const blog = repo(personal, "blog", BLOG_CHECKS);
+  const helpCenter = { ...repo(docs, "help-center", []), path: "~/Documents/help-center" };
 
   const defaults: Agent[] = [
     { id: "forge", name: "Forge", role: "builder", builtIn: true, provider: "claude-code", personality: "balanced", instructions: tr(L, "Keep changes small and focused.", "Mantenha as mudanças pequenas e focadas.") },
@@ -326,8 +680,8 @@ function seed(locale: Locale): Store {
 
   store = {
     locale: L,
-    workspaces: [acme, shop, personal],
-    repos: [acmeWeb, acmeApi, lojaRepo, blog],
+    workspaces: [acme, shop, personal, docs],
+    repos: [acmeWeb, acmeApi, lojaRepo, blog, helpCenter],
     tasks: [],
     events: new Map(),
     diffs: new Map(),
@@ -335,7 +689,7 @@ function seed(locale: Locale): Store {
     defaults,
     overrides: new Map([[acme.id, acmeCrew]]),
     flows: [],
-    teams: [],
+    teams: [docsTeam],
     rules: [
       { id: id(), scope: "global", workspaceId: null, repoId: null, text: tr(L, "Conventional commits, in English", "Conventional commits, em inglês"), enabled: true, source: "you", createdAt: iso(ago(6000)) },
       { id: id(), scope: "workspace", workspaceId: acme.id, repoId: null, text: tr(L, "Never use `any` in TypeScript", "Nunca usar `any` no TypeScript"), enabled: true, source: "you", createdAt: iso(ago(5000)) },
@@ -375,6 +729,15 @@ function seed(locale: Locale): Store {
     ],
     assumptionsAck: false,
   });
+
+  // Docs team: a guide where the Lead stepped in, waiting for review.
+  const guide = add(helpCenter, tr(L, "Write a getting started guide", "Escrever um guia de primeiros passos"), { ...simpleDoneScenario(L, "", []), diff: guideDiff(L) }, 25, 2);
+  patchTask(guide.id, { flow: LEAD_DECIDES });
+  runInstant(guide.id, guideRun(guide.id), ago(25));
+  // The Writer asked; the Lead suggested an answer and waits for you.
+  const faq = add(helpCenter, tr(L, "Update the FAQ with the new prices", "Atualizar o FAQ com os novos preços"), { ...simpleDoneScenario(L, "", []), diff: faqDiff(L) }, 5, 2);
+  patchTask(faq.id, { flow: LEAD_DECIDES });
+  store.pending.set(faq.id, runInstant(faq.id, faqRun(faq.id), ago(5)));
 
   // Waiting for an answer.
   const pag = add(acmeWeb, tr(L, "Add pagination to the users table", "Adicionar paginação à tabela de usuários"), paginationScenario(L), 3);
@@ -701,6 +1064,15 @@ export const demoApi: Api = {
     const r = st.repos.find((x) => x.id === input.repoId);
     if (!r) return fail("Repo not found");
     const task = newTask(r, input.prompt, st.locale, input.maxRounds ?? 3, iso(Date.now()));
+    if (isDocsWorkspace(r.workspaceId, input.flowId)) {
+      const doc = docFor(st.locale, task.title);
+      task.flow = LEAD_DECIDES;
+      st.tasks.unshift(task);
+      st.scenarios.set(task.id, { ...simpleDoneScenario(st.locale, "", []), diff: doc.diff });
+      st.diffs.set(task.id, doc.diff);
+      play(task.id, docRun(task.id, task.title, doc.path));
+      return ok(task);
+    }
     const c = paginationScenario(st.locale);
     st.tasks.unshift(task);
     st.scenarios.set(task.id, c);
@@ -772,6 +1144,23 @@ export const demoApi: Api = {
     emit(taskId, { type: "round", actor: "system", round });
     node(taskId, "you", "done");
     setStatus(taskId, "running");
+    const steps = task.flow?.steps ?? [];
+    if (steps[0]?.type === "lead") {
+      // The last builder applies your notes, the last reviewer looks again.
+      const last = (role: string) => [...steps].reverse().find((x) => x.type === "agent" && x.agentId === role);
+      const w = last("writer");
+      const e = last("editor");
+      if (w && e) {
+        const L = st.locale;
+        const file = st.diffs.get(taskId)?.[0]?.path ?? "docs/faq.md";
+        play(taskId, [
+          ...writeSteps(taskId, w.id, "writer", tr(L, "Applying your notes.", "Aplicando suas observações."), [{ name: "Edit", input: { file_path: file }, output: "The file has been updated." }], tr(L, `Done. ${notes}`, `Pronto. ${notes}`)),
+          ...editSteps(taskId, e.id, "editor", file, { approved: true, risk: "low", summary: tr(L, "Your notes are in. Ready to publish.", "Suas observações entraram. Pronto para publicar."), issues: [] }, round),
+          toReview(taskId),
+        ]);
+        return ok(st.tasks.find((t) => t.id === taskId)!);
+      }
+    }
     const c = { ...st.scenarios.get(taskId)!, approveOnRound: 0 };
     play(taskId, fixSteps(taskId, c, round, notes));
     return ok(st.tasks.find((t) => t.id === taskId)!);
