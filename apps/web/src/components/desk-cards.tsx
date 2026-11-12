@@ -34,6 +34,8 @@ export function QuestionCard({ task, compact, showRepo }: { task: Task; compact?
   const { builder } = useTaskAgents(task);
   const gate = Boolean(task.question?.gate);
   const planApproval = Boolean(task.question?.planApproval);
+  // In a task the Lead planned, a note at a pause can go to the Lead instead of the builder.
+  const ledTask = task.flow?.steps[0]?.type === "lead";
   const asker = task.question?.askedBy ?? builder;
   const [custom, setCustom] = useState(false);
   const [text, setText] = useState("");
@@ -163,6 +165,20 @@ export function QuestionCard({ task, compact, showRepo }: { task: Task; compact?
               <PlanSteps steps={task.flow.steps} reasons={task.plan?.reasons ?? {}} />
             </div>
           )}
+          {q.leadAnswer && (
+            <div className="flex flex-wrap items-center gap-2.5 rounded-[10px] border border-border bg-bg px-3 py-2.5 text-[13px]">
+              <Glyph actor={q.leadAnswer.by} size={22} />
+              <div className="min-w-0 grow">
+                <div>
+                  {t("leadSuggests", { name: agentName(q.leadAnswer.by, task.workspaceId) })} <span className="font-medium">“{q.leadAnswer.answer}”</span>
+                </div>
+                {q.leadAnswer.why && <div className="text-[12.5px] text-muted">{q.leadAnswer.why}</div>}
+              </div>
+              <Button className="h-8" disabled={busy} onClick={() => answer(q.leadAnswer!.answer)}>
+                {t("useLeadAnswer")}
+              </Button>
+            </div>
+          )}
           <form onSubmit={submitCustom} className="flex gap-2">
             <label htmlFor={`answer-${task.id}`} className="sr-only">
               {t("placeholder")}
@@ -174,9 +190,14 @@ export function QuestionCard({ task, compact, showRepo }: { task: Task; compact?
               placeholder={t("placeholder")}
               className="h-9 min-w-0 grow rounded-[9px] border border-border-strong bg-bg px-3 text-[13.5px] outline-none focus:border-text/30"
             />
+            {gate && ledTask && (
+              <Button className="h-9" disabled={!text.trim() || busy} onClick={() => answer(text.trim(), { replan: true })}>
+                {t("toLead")}
+              </Button>
+            )}
             <Button type="submit" variant="primary" className="h-9" disabled={!text.trim() || busy}>
               {busy && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
-              {tc("send")}
+              {gate && ledTask ? t("toBuilder") : tc("send")}
             </Button>
           </form>
           <div className="flex flex-wrap items-center gap-1.5">

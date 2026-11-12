@@ -368,6 +368,25 @@ function EventItem({ event, form }: { event: RunEvent; form?: AgentForm }) {
           </div>
         </div>
       );
+    case "checkpoint": {
+      const title =
+        event.kind === "question"
+          ? event.action === "answer"
+            ? t("cpAnswered", { name: name(event.actor), to: name(event.to ?? "forge") })
+            : t("cpSuggested", { name: name(event.actor), to: name(event.to ?? "forge") })
+          : t(`cp_${event.kind}_${event.action}` as "cp_stuck_retry", { name: name(event.actor) });
+      return (
+        <div className="flex gap-2.5">
+          <Glyph actor={event.actor} />
+          <div className="min-w-0 grow rounded-[10px] border border-pink/35 bg-pink/5 px-3 py-2.5 text-[13px]">
+            <div className="mb-1 text-xs font-medium text-pink">{title}</div>
+            {event.answer && <p className="mb-1 font-medium">“{event.answer}”</p>}
+            {event.why && <p className={cn(event.steps?.length && "mb-2")}>{event.why}</p>}
+            {event.steps && event.steps.length > 0 && <PlanSteps steps={event.steps} reasons={{}} />}
+          </div>
+        </div>
+      );
+    }
     case "assumptions":
       return (
         <div className="flex gap-2.5">
