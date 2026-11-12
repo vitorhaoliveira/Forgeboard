@@ -287,3 +287,102 @@ export function settingsScenario(L: Locale): ScenarioContent {
     plan: tr(L, "Plan approved. Starting with the API route.", "Plano aprovado. Começando pela rota da API."),
   };
 }
+
+// ---------- Docs team (Lead decides) ----------
+
+/** A new Markdown document as a diff: every line is added. */
+export function docPatch(path: string, markdown: string): DiffFile {
+  const lines = markdown.split("\n").map((l) => `+${l}`);
+  return patch(path, "added", `@@ -0,0 +1,${lines.length} @@`, lines);
+}
+
+export function guideMarkdown(L: Locale): string {
+  return tr(
+    L,
+    `# Getting started
+
+This guide takes you from a new account to your first published article in about ten minutes.
+
+## 1. Create your workspace
+
+Sign in and click **New workspace**. Give it your company's name; you can change it later.
+
+## 2. Invite your team
+
+Open **Workspace › Members** and click **Invite**. Type one email per line and pick a role for each person.
+
+> Example: \`ana@acme.com\` as an editor, \`joao@acme.com\` as a viewer.
+
+## 3. Write your first article
+
+Click **New article**, pick a collection and start typing. Articles save as you write.
+
+## 4. Publish
+
+When it reads well, click **Publish**. It shows up in your help center right away.
+
+## Plans
+
+Single sign-on (SSO) and custom domains come with the **Business** plan. See [Pricing](pricing.md).
+
+## Next steps
+
+- [Organize articles in collections](collections.md)
+- [Answers to common questions](faq.md)`,
+    `# Primeiros passos
+
+Este guia leva você de uma conta nova ao seu primeiro artigo publicado em uns dez minutos.
+
+## 1. Crie seu espaço
+
+Entre e clique em **Novo espaço**. Dê a ele o nome da sua empresa; dá para mudar depois.
+
+## 2. Convide seu time
+
+Abra **Espaço › Membros** e clique em **Convidar**. Digite um e-mail por linha e escolha o papel de cada pessoa.
+
+> Exemplo: \`ana@acme.com\` como editora, \`joao@acme.com\` como leitor.
+
+## 3. Escreva seu primeiro artigo
+
+Clique em **Novo artigo**, escolha uma coleção e comece a escrever. O artigo é salvo enquanto você digita.
+
+## 4. Publique
+
+Quando estiver bom, clique em **Publicar**. Ele aparece na sua central de ajuda na hora.
+
+## Planos
+
+Login único (SSO) e domínio próprio fazem parte do plano **Business**. Veja os [Preços](pricing.md).
+
+## Próximos passos
+
+- [Organize artigos em coleções](collections.md)
+- [Respostas para dúvidas comuns](faq.md)`,
+  );
+}
+
+export function guideDiff(L: Locale): DiffFile[] {
+  return [
+    docPatch("docs/getting-started.md", guideMarkdown(L)),
+    patch("docs/faq.md", "modified", "@@ -1,4 +1,6 @@", [
+      tr(L, " # Frequently asked questions", " # Perguntas frequentes"),
+      " ",
+      tr(L, "+New here? Start with the [getting started guide](getting-started.md).", "+Chegou agora? Comece pelo [guia de primeiros passos](getting-started.md)."),
+      "+",
+      tr(L, " ## How do I invite someone?", " ## Como convido alguém?"),
+    ]),
+  ];
+}
+
+export function faqDiff(L: Locale): DiffFile[] {
+  return [
+    patch("docs/faq.md", "modified", "@@ -18,7 +18,7 @@", [
+      tr(L, " ## How much does it cost?", " ## Quanto custa?"),
+      " ",
+      tr(L, "-Starter is US$ 9 a month and Business is US$ 29 a month.", "-O Starter custa US$ 9 por mês e o Business, US$ 29 por mês."),
+      tr(L, "+Starter is R$ 49 a month and Business is R$ 149 a month, billed in reais.", "+O Starter custa R$ 49 por mês e o Business, R$ 149 por mês, cobrados em reais."),
+      " ",
+    ]),
+  ];
+}

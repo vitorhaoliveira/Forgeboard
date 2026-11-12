@@ -2,6 +2,13 @@
 
 All notable changes to Forgeboard are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- **Demo:** a new **Help center** workspace run by the ready-made **Docs** team. The Lead plans each task, steps in when the Editor's review gets stuck (new steps appear in the graph), and suggests an answer to the Writer's question with **Use this answer**. The guide shows rendered on the review screen, with **Accept**. New tasks in that workspace run Lead → Writer → Editor.
+- **README:** new screenshots of the current interface (desk, forms, plan, run, decision, the Lead's plan and checkpoint, the Lead's suggestion, document preview, team gallery) and a new demo GIF.
+
 ## [2.5.0] — 2026-11-12
 
 Lead checkpoints: the Lead steps in when a task gets stuck, a builder asks, or you change course.

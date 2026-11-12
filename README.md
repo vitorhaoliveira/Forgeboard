@@ -40,21 +40,31 @@ your task → Forge (builds) → Checks (tests · lint · types) → Hawk (revie
 - **One workspace per project.** Group a project's repositories in a workspace with its own crew and house rules (general → workspace → repository). The "All" desk shows what needs you across every workspace.
 - **You stay in charge.** The merge screen leads with what changed, how we know it works and the risk; then the diff, where you can leave files out.
 
-![Desk](docs/screenshots/desk.png)
+![All workspaces: what needs you in each project](docs/screenshots/workspaces.png)
+
+![A workspace desk: questions, plans and work ready to merge](docs/screenshots/desk.png)
 
 | Question with a form | Editable plan |
 | --- | --- |
 | ![Forge asks four decisions in one form](docs/screenshots/questions.png) | ![Forge proposes a plan: steps can be unchecked, reordered and rewritten](docs/screenshots/plan.png) |
 
-![All workspaces](docs/screenshots/workspaces.png)
+![Run: Forge builds, the checks run, Hawk sends it back until it's right](docs/screenshots/run.png)
 
-![Run](docs/screenshots/run.png)
+![Decision: what changed, how we know it works, the risk, then the diff](docs/screenshots/decide.png)
 
-![Decision](docs/screenshots/decide.png)
+### Teams and the Lead
+
+![The Lead planned Writer → Editor; when the review got stuck, it added new steps](docs/screenshots/lead-run.png)
+
+| The Lead suggests an answer | A document, rendered, ready to accept |
+| --- | --- |
+| ![The Writer asks which currency to use; the Lead suggests one and says why](docs/screenshots/lead-suggests.png) | ![The new guide rendered as a page, with an Accept button](docs/screenshots/doc-preview.png) |
+
+![Ready-made teams for code and for other work](docs/screenshots/teams.png)
 
 ## Live demo
 
-The web app has a **demo mode**: a simulated crew runs entirely in the browser, with three workspaces and tasks in every state. Visitors can answer the agent's question, watch the run, review the diff, merge, replay finished runs and start new tasks. No server, no AI and no real repository involved.
+The web app has a **demo mode**: a simulated crew runs entirely in the browser, with four workspaces and tasks in every state, including a help center run by the **Docs** team, where the Lead plans each task, steps in when a review gets stuck and suggests answers to the Writer's questions. Visitors can answer the agents' questions, watch the run, review the diff (documents show rendered), merge or accept, replay finished runs and start new tasks. No server, no AI and no real repository involved.
 
 Run it locally:
 
