@@ -2,6 +2,28 @@
 
 All notable changes to Forgeboard are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.3.0] — 2026-11-11
+
+Teams: build your own or start from a ready-made one.
+
+### Added
+
+- **Teams** (the Crew page is now Teams). Next to the default team, make your own teams: a name, a description, the flow its tasks run by default, and its members (any agent, with any role).
+- **Ready-made teams** to start from, each with members, instructions in English and Portuguese, a default flow and example tasks:
+  - **Build & Review**: Forge and Hawk;
+  - **Product team**: Lead, Forge, Scribe (docs), Hawk and Guard (security);
+  - **Quick fix**: Lead and Forge, no review round;
+  - **Tests first**: Lead, Probe (writes the tests), Forge and Hawk.
+
+  Picking one makes your own copy to change freely. A blank team starts as a copy of the default team.
+- **A workspace can use one of your teams** (workspace settings → Team, or "A team" when you create a workspace, where ready-made teams can be picked directly). Its agents, its Lead and its default flow then come from that team; the Lead only picks among the team's members.
+- API: `GET/POST /api/teams`, `PATCH/DELETE /api/teams/:id`, `POST /api/teams/:id/agents`, `PATCH/DELETE /api/teams/:id/agents/:agentId`; `teamId` on workspaces.
+
+### Changed
+
+- In Portuguese, "Equipe" is now "Time" everywhere.
+- The workspace desk shows the team's name, and agents running on Codex are labeled Codex (they showed as Claude Code).
+
 ## [2.2.0] — 2026-11-11
 
 The Lead: picks the team for each task.

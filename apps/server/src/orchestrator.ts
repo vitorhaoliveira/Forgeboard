@@ -459,6 +459,8 @@ type LeadFlowStep = Extract<FlowStep, { type: "lead" }>;
 
 /** Every agent a flow step could use in a workspace: its own crew, then the default crew. */
 function teamFor(workspaceId: string): Agent[] {
+  // A workspace that uses one of your teams: the Lead picks from that team only.
+  if (workspaces.get(workspaceId)?.crewMode === "team") return agents.forWorkspace(workspaceId);
   const ids = [...new Set([...agents.forWorkspace(workspaceId), ...agents.defaults()].map((a) => a.id))];
   return ids.map((id) => agents.forFlow(workspaceId, id)!).filter(Boolean);
 }

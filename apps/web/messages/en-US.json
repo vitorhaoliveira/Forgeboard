@@ -17,7 +17,7 @@
     "main": "Main",
     "desk": "Desk",
     "runs": "Runs",
-    "crew": "Crew",
+    "crew": "Teams",
     "flows": "Flows",
     "settings": "Settings",
     "switchLanguage": "Mudar para português (Brasil)",
@@ -201,7 +201,7 @@
     "openRun": "Open the run"
   },
   "crew": {
-    "title": "Default crew",
+    "title": "Default team",
     "subtitle": "Workspaces use this crew unless they have their own. Shape each agent: name, personality, which AI runs it and extra instructions.",
     "roleBuilder": "Builder · edits files and runs commands",
     "roleReviewer": "Reviewer · read only, gets the check results",
@@ -383,7 +383,11 @@
     "crewCopyHint": "Reuse a crew you've already tuned.",
     "rulesHint": "General house rules always apply in every workspace.",
     "create": "Create workspace",
-    "close": "Close"
+    "close": "Close",
+    "crewTeam": "A team",
+    "crewTeamHint": "One of your teams, or a ready-made one.",
+    "yourTeams": "Your teams",
+    "templates": "Ready-made"
   },
   "wsSettings": {
     "title": "Configure workspace",
@@ -441,7 +445,12 @@
     "notifyHint": "A system notification when an agent asks something or finishes review, if Forgeboard isn't on screen. For this browser.",
     "notifyUnsupported": "This browser doesn't allow notifications.",
     "flowTitle": "Flow",
-    "flowHint": "New tasks in this workspace run this flow, unless you pick another in the task bar."
+    "flowHint": "New tasks in this workspace run this flow, unless you pick another in the task bar.",
+    "crewTeam": "One of your teams",
+    "crewTeamHint": "Agents, Lead and default flow come from that team.",
+    "crewTeamNone": "No teams yet: create one in Teams.",
+    "crewTeamCreate": "Create a team in Teams",
+    "editTeam": "Edit in Teams"
   },
   "demo": {
     "banner": "Live demo: a simulated crew runs in your browser. No AI is called and nothing touches a real repository.",
@@ -477,5 +486,26 @@
     "reposHere": "{count, plural, one {# repository here: hover it to choose, or open it.} other {# repositories here: hover one to choose, or open it.}}",
     "notRepo": "Open the folder of a git repository to choose it.",
     "pickThis": "Choose this folder"
+  },
+  "teams": {
+    "title": "Teams",
+    "subtitle": "The default team, your own teams and ready-made ones. A workspace uses one of them.",
+    "newTeam": "New team",
+    "templatesTitle": "Start from a ready-made team",
+    "templatesBody": "Picking one makes your own copy: rename it, change any agent, add or remove members.",
+    "runs": "Runs {flow} by default",
+    "useTemplate": "Use this team",
+    "blankTitle": "Blank team",
+    "blankBody": "Starts as a copy of the default team.",
+    "blankCreate": "Create blank team",
+    "blankName": "New team",
+    "name": "Name",
+    "description": "Description",
+    "planning": "Flow its tasks run",
+    "planningHint": "New tasks in workspaces that use this team run this flow, unless the workspace or the task picks another.",
+    "usedBy": "Used by {names}.",
+    "unused": "No workspace uses this team yet: pick it in a workspace’s settings.",
+    "delete": "Delete team",
+    "confirmDelete": "Delete team (workspaces go back to the default team)"
   }
 }

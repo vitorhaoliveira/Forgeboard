@@ -70,12 +70,14 @@ function AddRepoInline({ workspaceId }: { workspaceId: string }) {
   );
 }
 
+const PROVIDER_LABEL: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", mock: "Mock" };
+
 export function WorkspaceDesk({ workspaceId, repoFilter }: { workspaceId: string; repoFilter?: string }) {
   const t = useTranslations("desk");
   const tw = useTranslations("ws");
   const tc = useTranslations("common");
   const tcrew = useTranslations("crew");
-  const { workspace, repos: allRepos, tasks: allTasks, crews, loaded } = useAppState();
+  const { workspace, repos: allRepos, tasks: allTasks, crews, loaded, teams } = useAppState();
   const [ruleCounts, setRuleCounts] = useState<{ ws: number; repo: number } | null>(null);
   const ws = workspace(workspaceId);
   const repos = allRepos.filter((r) => r.workspaceId === workspaceId);
@@ -112,7 +114,13 @@ export function WorkspaceDesk({ workspaceId, repoFilter }: { workspaceId: string
           <div className="min-w-0">
             <h1 className="truncate text-lg font-semibold">{ws.name}</h1>
             <div className="text-[12.5px] text-muted">
-              {[ws.description, tw("repoCount", { count: repos.length }), ws.crewMode === "custom" ? tw("crewCustom") : tw("crewDefault")].filter(Boolean).join(" · ")}
+              {[
+                ws.description,
+                tw("repoCount", { count: repos.length }),
+                ws.crewMode === "team" ? (teams.find((x) => x.id === ws.teamId)?.name ?? tw("crewDefault")) : ws.crewMode === "custom" ? tw("crewCustom") : tw("crewDefault"),
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </div>
           </div>
           <Composer workspaceId={workspaceId} repoId={filter} className="mx-auto min-w-[280px] max-w-[640px] grow basis-[360px]" />
@@ -244,8 +252,11 @@ export function WorkspaceDesk({ workspaceId, repoFilter }: { workspaceId: string
               <div key={a.id} className="flex items-center gap-2.5 py-[11px] text-[13px]">
                 <Glyph actor={a.id} />
                 <span>{a.name}</span>
-                <span className="truncate text-xs text-muted">{a.provider === "mock" ? "Mock" : "Claude Code"} · {tcrew(a.personality)}</span>
-                <Chip className={cn("ml-auto h-5 text-[11px]", a.customized && "border-info/35 text-info")}>{a.customized ? tw("custom") : tw("default")}</Chip>
+                <span className="truncate text-xs text-muted">{PROVIDER_LABEL[a.provider]} · {tcrew(a.personality)}</span>
+                {/* Default or customized only means something next to the default team. */}
+                {ws.crewMode !== "team" && (
+                  <Chip className={cn("ml-auto h-5 text-[11px]", a.customized && "border-info/35 text-info")}>{a.customized ? tw("custom") : tw("default")}</Chip>
+                )}
               </div>
             ))}
           </Card>
