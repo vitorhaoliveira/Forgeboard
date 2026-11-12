@@ -514,7 +514,8 @@
     "notRepo": "Esta pasta ainda não é acompanhada. Começar a acompanhar cria uma pasta oculta .git com uma primeira cópia; nada mais muda.",
     "pickThis": "Escolher esta pasta",
     "track": "Começar a acompanhar esta pasta",
-    "tracking": "Começando…"
+    "tracking": "Começando…",
+    "lookOnly": "Qualquer pasta serve: a IA só lê."
   },
   "teams": {
     "title": "Times",
@@ -554,6 +555,37 @@
     "cmdRestricted": "Só arquivos",
     "cmdRestrictedHint": "Editam arquivos e nada mais. Ideal para documentos, pesquisa e tradução.",
     "cmdStandard": "Arquivos e comandos",
-    "cmdStandardHint": "Também rodam npm, pnpm, yarn, bun, npx e node (e Python, em times de dados) para instalar e testar. Um workspace em Restrito continua valendo."
+    "cmdStandardHint": "Também rodam npm, pnpm, yarn, bun, npx e node (e Python, em times de dados) para instalar e testar. Um workspace em Restrito continua valendo.",
+    "ai": {
+      "title": "Montar com IA",
+      "body": "Descreva o time com suas palavras. A IA propõe os membros, os papéis, as instruções e o que eles podem rodar. Nada é salvo até você aprovar.",
+      "request": "Para que é o time?",
+      "requestPlaceholder": "ex.: Nossa central de ajuda em Markdown. Quero alguém rígido conferindo links e preços.",
+      "folder": "Pasta para olhar (opcional)",
+      "folderPlaceholder": "/Users/voce/projetos/central-de-ajuda",
+      "folderHint": "A IA só lê a pasta, para ajustar o time ao trabalho. Nada nela muda.",
+      "propose": "Propor um time",
+      "working": "A IA está montando o time. Isso pode levar um minuto.",
+      "cancel": "Cancelar",
+      "proposalTitle": "Time proposto: mude o que quiser antes de criar",
+      "changesTitle": "Mudanças propostas: ajuste o que quiser antes de aplicar",
+      "changePlaceholder": "O que mudar? ex.: mais um revisor para o tom",
+      "again": "Pedir outra proposta",
+      "discard": "Descartar",
+      "create": "Criar time",
+      "defaultName": "Novo time",
+      "members": "Membros · {count} de {max}",
+      "addMember": "Adicionar agente",
+      "remove": "Remover {name}",
+      "badgeNew": "novo",
+      "badgeChanged": "mudou",
+      "leaving": "Sai do time: {names}",
+      "bnrHint": "Construir e revisar precisa de exatamente um construtor e um revisor. Com qualquer outro time, o Lead decide.",
+      "cmdWarn": "Este time não é de código, e os construtores vão poder rodar comandos. Escolha isso só se precisarem (por exemplo, Python para dados).",
+      "adjustTitle": "Ajustar com IA",
+      "adjustPlaceholder": "ex.: Adicione um revisor de segurança, ou deixe o Editor menos rígido",
+      "adjustPropose": "Propor mudanças",
+      "apply": "Aplicar mudanças"
+    }
   }
 }

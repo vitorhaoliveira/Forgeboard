@@ -514,7 +514,8 @@
     "notRepo": "This folder isn't tracked yet. Starting to track it creates a hidden .git folder with a first snapshot; nothing else changes.",
     "pickThis": "Choose this folder",
     "track": "Start tracking this folder",
-    "tracking": "Starting…"
+    "tracking": "Starting…",
+    "lookOnly": "Any folder works: the AI only reads it."
   },
   "teams": {
     "title": "Teams",
@@ -554,6 +555,37 @@
     "cmdRestricted": "Files only",
     "cmdRestrictedHint": "Edit files, nothing else. Right for documents, research and translation.",
     "cmdStandard": "Files and commands",
-    "cmdStandardHint": "Also run npm, pnpm, yarn, bun, npx and node (and Python, in data teams) to install and test. A workspace set to Restricted still wins."
+    "cmdStandardHint": "Also run npm, pnpm, yarn, bun, npx and node (and Python, in data teams) to install and test. A workspace set to Restricted still wins.",
+    "ai": {
+      "title": "Build with AI",
+      "body": "Describe the team in your words. The AI proposes the members, their roles and instructions, and what they may run. Nothing is saved until you approve it.",
+      "request": "What is the team for?",
+      "requestPlaceholder": "e.g. Our help center in Markdown. I want someone strict checking links and prices.",
+      "folder": "Folder to look at (optional)",
+      "folderPlaceholder": "/Users/you/projects/help-center",
+      "folderHint": "The AI only reads it, to fit the team to the work. Nothing in it changes.",
+      "propose": "Propose a team",
+      "working": "The AI is designing the team. This can take a minute.",
+      "cancel": "Cancel",
+      "proposalTitle": "Proposed team: change anything before creating it",
+      "changesTitle": "Proposed changes: adjust anything before applying them",
+      "changePlaceholder": "What to change? e.g. one more reviewer for tone",
+      "again": "Ask for another proposal",
+      "discard": "Discard",
+      "create": "Create team",
+      "defaultName": "New team",
+      "members": "Members · {count} of {max}",
+      "addMember": "Add agent",
+      "remove": "Remove {name}",
+      "badgeNew": "new",
+      "badgeChanged": "changed",
+      "leaving": "Leaves the team: {names}",
+      "bnrHint": "Build & Review needs exactly one builder and one reviewer. With any other team, the Lead decides.",
+      "cmdWarn": "This team isn't for code, and its builders will be able to run commands. Choose it only if they need to (for example, Python for data).",
+      "adjustTitle": "Adjust with AI",
+      "adjustPlaceholder": "e.g. Add a security reviewer, or make the Editor less strict",
+      "adjustPropose": "Propose changes",
+      "apply": "Apply changes"
+    }
   }
 }

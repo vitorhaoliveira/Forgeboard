@@ -13,6 +13,7 @@ import {
   type FormAnswer,
   type MessageDelivery,
   type HouseRule,
+  type ProposeTeamInput,
   type ProviderInfo,
   type Repo,
   type RuleScope,
@@ -20,6 +21,8 @@ import {
   type RunEvent,
   type Task,
   type Team,
+  type TeamDraft,
+  type TeamProposal,
   type Workspace,
 } from "@forgeboard/shared";
 import { demoApi } from "./demo/demo-api";
@@ -37,7 +40,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init,
       headers: { "Content-Type": "application/json", ...init?.headers },
     });
-  } catch {
+  } catch (err) {
+    // Stopped on purpose (e.g. "Cancel" while the AI designs a team): not a server problem.
+    if (init?.signal?.aborted) throw err;
     throw new ServerDownError(API_URL);
   }
   if (res.status === 401) throw new UnauthorizedError("unauthorized");
@@ -98,6 +103,10 @@ const realApi = {
   /** Teams you made (templates are in @forgeboard/shared). */
   teams: () => request<Team[]>("/api/teams"),
   createTeam: (input: CreateTeamInput) => request<Team>("/api/teams", post(input)),
+  /** Asks an AI to design a team, or change one (teamId). Nothing is saved. */
+  proposeTeam: (input: ProposeTeamInput, signal?: AbortSignal) => request<TeamProposal>("/api/teams/propose", { ...post(input), signal }),
+  /** Replaces a team with a draft you approved. */
+  applyTeamDraft: (id: string, draft: TeamDraft) => request<Team>(`/api/teams/${id}/apply`, post({ draft })),
   updateTeam: (id: string, data: Partial<Pick<Team, "name" | "description" | "planning" | "kind" | "about" | "commands">>) => request<Team>(`/api/teams/${id}`, patch(data)),
   removeTeam: (id: string) => request<void>(`/api/teams/${id}`, del),
   createTeamAgent: (teamId: string, input: CreateAgentInput) => request<Agent>(`/api/teams/${teamId}/agents`, post(input)),

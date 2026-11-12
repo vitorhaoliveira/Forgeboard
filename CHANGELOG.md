@@ -2,7 +2,23 @@
 
 All notable changes to Forgeboard are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [2.6.0] — 2026-11-12
+
+Teams built with AI: describe a team in your words, edit what the AI proposes, approve it.
+
+### Added
+
+- **Build with AI** (Teams → New team): describe what the team is for and, if you want, point at a folder. An agent reads the folder (read only) and proposes a whole team:
+  - the members, with name, role, personality, instructions and a line on why each one is there;
+  - the kind of work and what the team works on;
+  - the flow (Lead decides, or Build & Review for one builder and one reviewer);
+  - what builders may run.
+
+  Everything is editable before you create it: change any field, add or remove members, or ask for another proposal saying what to change. **Cancel** stops the AI.
+- **Adjust with AI** on any of your teams: ask for a change in words ("add a security reviewer", "make the Editor less strict"). The proposal marks members that are **new** or **changed** and lists the ones that leave; nothing changes until you click **Apply changes**. A member that one of your flows uses can't be removed this way.
+- **Safe defaults.** Nothing is saved without your approval. A proposal for anything that isn't code edits files only; you can turn commands on yourself, with a warning. At most 6 members per proposal. The designer runs on your default Lead's provider.
+- The folder picker can choose any folder as it is ("the AI only reads it"), without starting to track it.
+- Demo: Build with AI and Adjust with AI work in the browser with a simulated designer.
 
 ### Changed
 

@@ -13,6 +13,8 @@ import {
   isFinished,
   LOCALES,
   MAX_AGENTS,
+  draftMembers,
+  normalizeTeamDraft,
   MAX_FLOW_ROUNDS,
   MAX_FLOW_STEPS,
   TEAM_TEMPLATES,
@@ -55,6 +57,8 @@ import {
   taskDiff,
 } from "./orchestrator.js";
 import { listProviders } from "./providers/index.js";
+import { AbortedError } from "./providers/types.js";
+import { DesignError, proposeTeam } from "./team-designer.js";
 
 export const app = new Hono();
 
@@ -90,6 +94,9 @@ app.use("/api/*", async (c, next) => {
 app.onError((err, c) => {
   if (err instanceof HttpError) return c.json({ error: err.message }, err.status);
   if (err instanceof FlowError || err instanceof GitError) return c.json({ error: err.message }, 409);
+  if (err instanceof DesignError) return c.json({ error: err.message }, 422);
+  // You cancelled (e.g. while the AI designed a team): nothing went wrong.
+  if (err instanceof AbortedError) return c.json({ error: "Stopped" }, 409);
   console.error(err);
   return c.json({ error: err.message }, 500);
 });
@@ -252,6 +259,49 @@ function defaultFlowIdFor(workspaceId: string): string {
 
 app.get("/api/teams", (c) => c.json(teams.list()));
 
+/** A draft you edited and approved. You chose its settings, so it may run commands. */
+async function checkedDraft(raw: unknown, existing?: Team) {
+  const providers = (await listProviders()).map((p) => p.id);
+  const draft = normalizeTeamDraft(raw, { provider: "claude-code", providers, ...(existing ? { existing } : {}), allowCommands: true });
+  if (!draft) throw new HttpError(400, "A team needs at least one agent that builds.");
+  return draft;
+}
+
+app.post("/api/teams/propose", async (c) => {
+  const input = await body(
+    c,
+    z.object({
+      request: z.string().trim().min(3).max(2_000),
+      path: z.string().trim().min(1).optional(),
+      teamId: z.string().optional(),
+      previous: z.unknown().optional(),
+      locale: z.enum(LOCALES as [string, ...string[]]),
+    }),
+  );
+  const team = input.teamId ? mustGetTeam(input.teamId) : undefined;
+  const proposal = await proposeTeam({ ...input, path: input.path ? resolve(input.path) : undefined, locale: input.locale as Locale } as Parameters<typeof proposeTeam>[0], team, c.req.raw.signal);
+  return c.json(proposal);
+});
+
+/** Replaces a team with a draft you approved (from "Adjust with AI"). */
+app.post("/api/teams/:id/apply", async (c) => {
+  const team = mustGetTeam(c.req.param("id"));
+  const input = await body(c, z.object({ draft: z.unknown() }));
+  const draft = await checkedDraft(input.draft, team);
+  const members = draftMembers(draft);
+  // A member that a flow of yours uses can't go away.
+  for (const gone of team.members.filter((m) => !members.some((x) => x.id === m.id))) {
+    const usedBy = flows.usingAgent(gone.id);
+    if (usedBy.length && !agents.defaults().some((a) => a.id === gone.id)) {
+      throw new FlowError(`${gone.name} is used by the flow "${usedBy[0]!.name}". Keep it, or remove it from the flow first.`);
+    }
+  }
+  const { members: _m, ...fields } = draft;
+  const next: Team = { ...team, ...fields, members };
+  teams.save(next);
+  return c.json(next);
+});
+
 app.post("/api/teams", async (c) => {
   const input = await body(
     c,
@@ -259,9 +309,18 @@ app.post("/api/teams", async (c) => {
       name: z.string().trim().min(1).max(40),
       description: z.string().trim().max(200).default(""),
       templateId: z.string().optional(),
+      draft: z.unknown().optional(),
       locale: z.enum(LOCALES as [string, ...string[]]),
     }),
   );
+  if (input.draft !== undefined) {
+    // A team the AI proposed and you approved.
+    const draft = await checkedDraft(input.draft);
+    const { members: _m, ...fields } = draft;
+    const team: Team = { id: nanoid(10), ...fields, name: input.name, description: input.description, members: draftMembers(draft), createdAt: new Date().toISOString() };
+    teams.save(team);
+    return c.json(team, 201);
+  }
   const template = input.templateId ? TEAM_TEMPLATES.find((t) => t.id === input.templateId) : undefined;
   if (input.templateId && !template) throw new HttpError(404, "Template not found");
   const team: Team = {

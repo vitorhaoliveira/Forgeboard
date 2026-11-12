@@ -46,7 +46,11 @@ export const mockProvider: Provider = {
     let steps: Step[];
     let text: string;
 
-    if (input.role === "lead" && input.prompt.includes("FORGEBOARD_ANSWER:")) {
+    if (input.role === "lead" && input.prompt.includes("FORGEBOARD_TEAM:")) {
+      const team = mockTeam(input.prompt, locale);
+      steps = [[600, { type: "text", text: t(locale, "Looking at what the team will work on.", "Vendo no que o time vai trabalhar.") }]];
+      text = `${team.summary}\nFORGEBOARD_TEAM: ${JSON.stringify(team)}`;
+    } else if (input.role === "lead" && input.prompt.includes("FORGEBOARD_ANSWER:")) {
       // Answers a builder's question with its first option.
       const option = /^Options: "([^"]+)"/m.exec(input.prompt)?.[1] ?? t(locale, "Go with the simplest option", "Siga com a opção mais simples");
       steps = [[500, { type: "text", text: t(locale, "The task makes this clear.", "A tarefa deixa isso claro.") }]];
@@ -198,3 +202,77 @@ export const mockProvider: Provider = {
     return { sessionId: `mock-${input.role}-${round}`, text, costUsd: 0, durationMs: Date.now() - started };
   },
 };
+
+/**
+ * A team from the request's words: docs → Writer and Editor, data → Analyst and Checker, else code.
+ * Changing a team: "security"/"segurança" adds a Guard; anything else makes its reviewers strict.
+ */
+function mockTeam(prompt: string, locale: Locale) {
+  const request = (/^What the user wants: (.*)$/m.exec(prompt)?.[1] ?? "").toLowerCase();
+  const current = /^Change this existing team as the user asks, and nothing else:\n(.*)$/m.exec(prompt)?.[1];
+  const member = (name: string, role: string, personality: string, en: string, pt: string, why: [string, string]) => ({
+    name,
+    role,
+    personality,
+    instructions: t(locale, en, pt),
+    why: t(locale, ...why),
+  });
+  if (current) {
+    const team = JSON.parse(current) as { members: { id: string; name: string; role: string; personality: string; instructions: string }[] } & Record<string, unknown>;
+    const security = /secur|segura/.test(request);
+    const members: Record<string, unknown>[] = team.members.map((m) => ({ ...m, personality: !security && m.role === "reviewer" ? "strict" : m.personality }));
+    if (security) {
+      members.push(member("Guard", "reviewer", "strict", "Look for leaked secrets, unsafe input and missing auth checks. Block on any of them.", "Procure segredos expostos, entrada sem validação e falta de checagem de acesso. Bloqueie em qualquer um deles.", ["Nobody checked security.", "Ninguém conferia segurança."]));
+    }
+    return {
+      ...team,
+      members,
+      summary: security ? t(locale, "Added Guard, a strict security reviewer.", "Adicionei o Guard, um revisor rígido de segurança.") : t(locale, "Made the reviewers strict.", "Deixei os revisores rígidos."),
+    };
+  }
+  if (/doc|guia|guide|help|ajuda|manual|readme/.test(request)) {
+    return {
+      summary: t(locale, "A small docs team: Writer writes, Editor checks.", "Um time pequeno de documentação: o Writer escreve e o Editor confere."),
+      name: t(locale, "Docs", "Documentação"),
+      description: t(locale, "Writes and checks the documentation.", "Escreve e confere a documentação."),
+      kind: "writing",
+      about: t(locale, "Documentation in Markdown.", "Documentação em Markdown."),
+      commands: "restricted",
+      planning: "lead-decides",
+      members: [
+        member("Lead", "lead", "balanced", "Writer writes, Editor reviews. Skip the review only for one-line fixes.", "O Writer escreve, o Editor revisa. Pule a revisão só em correções de uma linha.", ["Plans each task.", "Planeja cada tarefa."]),
+        member("Writer", "builder", "mentor", "Short sentences, one idea per paragraph, an example per step.", "Frases curtas, uma ideia por parágrafo, um exemplo por passo.", ["Writes the pages.", "Escreve as páginas."]),
+        member("Editor", "reviewer", "strict", "Check terms, links and facts against the other pages.", "Confira termos, links e fatos com as outras páginas.", ["Keeps it right and consistent.", "Mantém tudo certo e consistente."]),
+      ],
+    };
+  }
+  if (/data|dados|csv|planilha|sheet|analys|anális/.test(request)) {
+    return {
+      summary: t(locale, "Analyst works on the data, Checker checks every number.", "O Analyst trabalha nos dados e o Checker confere cada número."),
+      name: t(locale, "Data", "Dados"),
+      description: t(locale, "Analyses the data and reports what it shows.", "Analisa os dados e conta o que eles mostram."),
+      kind: "data",
+      about: t(locale, "Data files and reports.", "Arquivos de dados e relatórios."),
+      commands: "standard",
+      planning: "build-and-review",
+      members: [
+        member("Analyst", "builder", "balanced", "Explain each step and keep the raw data untouched.", "Explique cada passo e não altere os dados originais.", ["Does the analysis.", "Faz a análise."]),
+        member("Checker", "reviewer", "strict", "Recompute every number in the report.", "Recalcule cada número do relatório.", ["Catches wrong numbers.", "Pega números errados."]),
+      ],
+    };
+  }
+  return {
+    summary: t(locale, "A Lead, a builder and a strict reviewer.", "Um Lead, um construtor e um revisor rígido."),
+    name: t(locale, "Product", "Produto"),
+    description: t(locale, "Builds and reviews changes to the app.", "Constrói e revisa mudanças no app."),
+    kind: "code",
+    about: "",
+    commands: "standard",
+    planning: "lead-decides",
+    members: [
+      member("Lead", "lead", "balanced", "Pick the smallest team for each task.", "Escolha o menor time para cada tarefa.", ["Plans each task.", "Planeja cada tarefa."]),
+      member("Builder", "builder", "balanced", "Keep changes small and add a test for each fix.", "Mantenha as mudanças pequenas e adicione um teste para cada correção.", ["Writes the code.", "Escreve o código."]),
+      member("Reviewer", "reviewer", "strict", "Block on failing checks and real bugs.", "Bloqueie verificações falhando e bugs de verdade.", ["Keeps quality up.", "Garante a qualidade."]),
+    ],
+  };
+}

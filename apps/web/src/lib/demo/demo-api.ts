@@ -29,7 +29,7 @@ import type {
   Verdict,
   Workspace,
 } from "@forgeboard/shared";
-import { BUILD_AND_REVIEW, isDocument, LEAD_DECIDES, LEAD_DECIDES_ID, TEAM_TEMPLATES, templateMembers } from "@forgeboard/shared";
+import { BUILD_AND_REVIEW, draftMembers, isDocument, LEAD_DECIDES, LEAD_DECIDES_ID, normalizeTeamDraft, TEAM_TEMPLATES, templateMembers, type TeamProposal } from "@forgeboard/shared";
 import type { Api, StreamHandlers } from "../api";
 import { sanitizeAnswer } from "@forgeboard/shared/a2ui";
 import {
@@ -958,8 +958,39 @@ export const demoApi: Api = {
   // The demo's folders are made up: "tracking" one only marks it.
   trackFolder: (path) => ok({ path }),
   teams: () => ok(s().teams),
+  // The demo's "AI": a team from the request's words, after a short wait.
+  proposeTeam: (input, signal) =>
+    new Promise<TeamProposal>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const current = input.teamId ? s().teams.find((x) => x.id === input.teamId) : undefined;
+        const raw = demoTeam(input.request, s().locale, current);
+        const draft = normalizeTeamDraft(raw, { provider: "claude-code", providers: ["claude-code", "codex"], ...(current ? { existing: current } : {}), allowCommands: current?.commands === "standard" });
+        resolve(clone({ draft: draft!, summary: raw.summary, costUsd: 0.03 }));
+      }, 2600);
+      signal?.addEventListener("abort", () => {
+        clearTimeout(timer);
+        reject(new DOMException("Stopped", "AbortError"));
+      });
+    }),
+  applyTeamDraft: (teamId, draft) => {
+    const team = s().teams.find((x) => x.id === teamId);
+    if (!team) return fail("Team not found");
+    const checked = normalizeTeamDraft(draft, { provider: "claude-code", providers: ["claude-code", "codex", "mock"], existing: team, allowCommands: true });
+    if (!checked) return fail("A team needs at least one agent that builds.");
+    const { members: _m, ...fields } = checked;
+    Object.assign(team, fields, { members: draftMembers(checked) });
+    return ok(team);
+  },
   createTeam: (input) => {
     const st = s();
+    if (input.draft) {
+      const checked = normalizeTeamDraft(input.draft, { provider: "claude-code", providers: ["claude-code", "codex", "mock"], allowCommands: true });
+      if (!checked) return fail("A team needs at least one agent that builds.");
+      const { members: _m, ...fields } = checked;
+      const team: Team = { id: id(), ...fields, name: input.name, description: input.description ?? "", members: draftMembers(checked), createdAt: iso(Date.now()) };
+      st.teams.push(team);
+      return ok(team);
+    }
     const tpl = TEAM_TEMPLATES.find((x) => x.id === input.templateId);
     const team: Team = {
       id: id(),
@@ -1195,3 +1226,74 @@ export const demoApi: Api = {
     return () => set.delete(handlers);
   },
 };
+
+/** What the demo's "AI" proposes: docs → Writer and Editor, data → Analyst and Checker, else a code team. */
+function demoTeam(request: string, L: Locale, current?: Team): { summary: string } & Record<string, unknown> {
+  const q = request.toLowerCase();
+  const m = (name: string, role: string, personality: string, instructions: string, why: string) => ({ name, role, personality, instructions, why });
+  if (current) {
+    const security = /secur|segura/.test(q);
+    const members: Record<string, unknown>[] = current.members.map((x) => ({ ...x, personality: !security && x.role === "reviewer" ? "strict" : x.personality }));
+    if (security) {
+      members.push(
+        m(
+          "Guard",
+          "reviewer",
+          "strict",
+          tr(L, "Look for leaked secrets, unsafe input and missing auth checks. Block on any of them.", "Procure segredos expostos, entrada sem validação e falta de checagem de acesso. Bloqueie em qualquer um deles."),
+          tr(L, "Nobody checked security.", "Ninguém conferia segurança."),
+        ),
+      );
+    }
+    return {
+      ...current,
+      members,
+      summary: security ? tr(L, "Added Guard, a strict security reviewer.", "Adicionei o Guard, um revisor rígido de segurança.") : tr(L, "Made the reviewers strict.", "Deixei os revisores rígidos."),
+    };
+  }
+  if (/doc|guia|guide|help|ajuda|manual|readme|faq/.test(q)) {
+    return {
+      summary: tr(L, "A small docs team: the Lead plans, Writer writes, Editor checks terms and links.", "Um time pequeno de documentação: o Lead planeja, o Writer escreve e o Editor confere termos e links."),
+      name: tr(L, "Help center", "Central de ajuda"),
+      description: tr(L, "Writes and checks the help center.", "Escreve e confere a central de ajuda."),
+      kind: "writing",
+      about: tr(L, "The product's help center, in Markdown.", "A central de ajuda do produto, em Markdown."),
+      commands: "restricted",
+      planning: "lead-decides",
+      members: [
+        m("Lead", "lead", "balanced", tr(L, "Writer writes, Editor reviews. Skip the review only for one-line fixes.", "O Writer escreve, o Editor revisa. Pule a revisão só em correções de uma linha."), tr(L, "Plans each task.", "Planeja cada tarefa.")),
+        m("Writer", "builder", "mentor", tr(L, "Short sentences, one idea per paragraph, an example for each step. Keep the tone of the existing pages.", "Frases curtas, uma ideia por parágrafo, um exemplo para cada passo. Mantenha o tom das páginas que já existem."), tr(L, "Writes the pages.", "Escreve as páginas.")),
+        m("Editor", "reviewer", "strict", tr(L, "Check every menu name, link and price against the app and the other pages. Block on anything wrong.", "Confira cada nome de menu, link e preço com o app e as outras páginas. Bloqueie o que estiver errado."), tr(L, "You asked for someone strict about links.", "Você pediu alguém rígido com links.")),
+      ],
+    };
+  }
+  if (/data|dados|csv|planilha|sheet|analys|anális/.test(q)) {
+    return {
+      summary: tr(L, "Analyst works on the data, Checker recomputes every number.", "O Analyst trabalha nos dados e o Checker recalcula cada número."),
+      name: tr(L, "Data", "Dados"),
+      description: tr(L, "Analyses the data and reports what it shows.", "Analisa os dados e conta o que eles mostram."),
+      kind: "data",
+      about: tr(L, "Spreadsheets and reports.", "Planilhas e relatórios."),
+      commands: "standard",
+      planning: "build-and-review",
+      members: [
+        m("Analyst", "builder", "balanced", tr(L, "Explain each step and never change the raw data.", "Explique cada passo e nunca altere os dados originais."), tr(L, "Does the analysis.", "Faz a análise.")),
+        m("Checker", "reviewer", "strict", tr(L, "Recompute every number in the report.", "Recalcule cada número do relatório."), tr(L, "Catches wrong numbers.", "Pega números errados.")),
+      ],
+    };
+  }
+  return {
+    summary: tr(L, "A Lead, a builder and a strict reviewer: small, and enough for most tasks.", "Um Lead, um construtor e um revisor rígido: pequeno, e suficiente para a maioria das tarefas."),
+    name: tr(L, "Product", "Produto"),
+    description: tr(L, "Builds and reviews changes to the app.", "Constrói e revisa mudanças no app."),
+    kind: "code",
+    about: "",
+    commands: "standard",
+    planning: "lead-decides",
+    members: [
+      m("Lead", "lead", "balanced", tr(L, "Pick the smallest team for each task.", "Escolha o menor time para cada tarefa."), tr(L, "Plans each task.", "Planeja cada tarefa.")),
+      m("Builder", "builder", "balanced", tr(L, "Keep changes small and add a test for each fix.", "Mantenha as mudanças pequenas e adicione um teste para cada correção."), tr(L, "Writes the code.", "Escreve o código.")),
+      m("Reviewer", "reviewer", "strict", tr(L, "Block on failing checks and real bugs.", "Bloqueie verificações falhando e bugs de verdade."), tr(L, "Keeps quality up.", "Garante a qualidade.")),
+    ],
+  };
+}

@@ -1,6 +1,6 @@
 # v3 — Teams: a Lead, ready-made teams, any kind of work
 
-Status: the Lead (Phase A) shipped in v2.2.0, teams and code templates in v2.3.0, any kind of work in v2.4.0, Lead checkpoints (Phase B) in v2.5.0. The drag-and-drop canvas and parallel steps are next.
+Status: the Lead (Phase A) shipped in v2.2.0, teams and code templates in v2.3.0, any kind of work in v2.4.0, Lead checkpoints (Phase B) in v2.5.0, teams built with AI in v2.6.0. The drag-and-drop canvas and parallel steps are next.
 
 ## The idea in three lines
 
