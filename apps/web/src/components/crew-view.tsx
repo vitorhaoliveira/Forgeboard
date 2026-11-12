@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { useFlowName } from "./flow-graph";
 import { actorColor, Glyph } from "./glyph";
 import { RulesEditor } from "./rules-editor";
+import { AiTeamAdjust, AiTeamBuilder } from "./team-builder";
 import { Button, Chip, SectionLabel } from "./ui";
 
 const PERSONALITIES: Personality[] = ["mentor", "balanced", "strict"];
@@ -354,7 +355,8 @@ function TemplateGallery({ onCreated }: { onCreated: (teamId: string) => void })
 
   return (
     <div className="flex flex-col gap-3.5">
-      <div>
+      <AiTeamBuilder onCreated={onCreated} />
+      <div className="mt-2">
         <h2 className="text-base font-semibold">{t("templatesTitle")}</h2>
         <p className="mt-1 text-[13px] text-muted">{t("templatesBody")}</p>
       </div>
@@ -473,6 +475,7 @@ function TeamEditor({ team, onDeleted }: { team: Team; onDeleted: () => void }) 
 
   return (
     <div className="flex flex-col gap-5">
+      <AiTeamAdjust team={team} />
       <section className="flex flex-col gap-3 rounded-2xl border border-border bg-panel p-[18px]">
         <div className="grid gap-3 sm:grid-cols-[1fr_2fr]">
           <label className="flex flex-col gap-1.5">

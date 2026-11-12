@@ -99,6 +99,8 @@ export interface CreateTeamInput {
   description?: string;
   /** Start from a template; without one, the team starts as a copy of the default team. */
   templateId?: string;
+  /** A team the AI proposed and you approved. */
+  draft?: TeamDraft;
   locale: Locale;
 }
 
@@ -940,3 +942,156 @@ export function templateMembers(template: TeamTemplate, locale: Locale): Agent[]
   return template.members.map((m) => ({ ...m, instructions: m.instructions[locale] }));
 }
 
+
+// ---------- Teams designed by AI ----------
+
+/** At most this many members in a team the AI proposes, so proposals stay small. */
+export const MAX_DRAFT_MEMBERS = 6;
+
+/** A member of a proposed team. `id` is kept for members of an existing team. */
+export interface TeamDraftMember {
+  id: AgentId;
+  name: string;
+  role: AgentRole;
+  provider: ProviderId;
+  personality: Personality;
+  instructions: string;
+  /** One line on why this member is there. */
+  why?: string;
+}
+
+/** A whole team as the AI proposed it, editable before it is saved. */
+export interface TeamDraft {
+  name: string;
+  description: string;
+  kind: WorkKind;
+  about: string;
+  commands: ForgeCommands;
+  /** BUILD_AND_REVIEW_ID or LEAD_DECIDES_ID. */
+  planning: string;
+  members: TeamDraftMember[];
+}
+
+export interface ProposeTeamInput {
+  /** What the team is for, in your words; for an existing team, what to change. */
+  request: string;
+  /** A folder the AI may look at (read only). */
+  path?: string;
+  /** Change this team instead of designing a new one. */
+  teamId?: string;
+  /** Asking again: the proposal you didn't take. */
+  previous?: TeamDraft;
+  locale: Locale;
+}
+
+export interface TeamProposal {
+  draft: TeamDraft;
+  /** One or two sentences for you: what it proposes, or what it changed. */
+  summary: string;
+  costUsd: number | null;
+}
+
+const PERSONALITY_IDS: Personality[] = ["mentor", "balanced", "strict"];
+
+/** A short id from a name: "Fact-checker" → "fact-checker". */
+function slug(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 20) || "agent"
+  );
+}
+
+/**
+ * Makes a usable team out of what the AI wrote (or what you edited): valid fields, at most
+ * MAX_DRAFT_MEMBERS members, unique ids, at least one builder, and ids the built-in flows expect
+ * ("lead" for the Lead; "forge" and "hawk" for Build & Review). Members of `existing` keep their id.
+ * Anything that isn't code edits files only, unless `allowCommands` (you chose it yourself).
+ */
+export function normalizeTeamDraft(
+  raw: unknown,
+  opts: { provider: ProviderId; providers: ProviderId[]; existing?: Pick<Team, "members">; allowCommands?: boolean },
+): TeamDraft | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+  const kind = WORK_KINDS.includes(o.kind as WorkKind) ? (o.kind as WorkKind) : "code";
+  const wantsCommands = o.commands === "standard";
+  const commands: ForgeCommands = wantsCommands && (kind === "code" || opts.allowCommands) ? "standard" : "restricted";
+
+  const keep = new Set((opts.existing?.members ?? []).map((m) => m.id));
+  const used = new Set<string>();
+  const unique = (base: string) => {
+    let id = base;
+    for (let n = 2; used.has(id) || id === "lead"; n++) id = `${base}-${n}`;
+    used.add(id);
+    return id;
+  };
+  let lead: TeamDraftMember | null = null;
+  const members: TeamDraftMember[] = [];
+  for (const m of Array.isArray(o.members) ? o.members : []) {
+    if (!m || typeof m !== "object") continue;
+    const r = m as Record<string, unknown>;
+    const name = text(r.name, 24);
+    const role = r.role === "lead" || r.role === "reviewer" ? r.role : r.role === "builder" ? "builder" : null;
+    if (!name || !role) continue;
+    const provider = opts.providers.includes(r.provider as ProviderId) ? (r.provider as ProviderId) : opts.provider;
+    const member = {
+      name,
+      role,
+      provider,
+      personality: PERSONALITY_IDS.includes(r.personality as Personality) ? (r.personality as Personality) : "balanced",
+      instructions: text(r.instructions, 2_000),
+      ...(text(r.why, 200) ? { why: text(r.why, 200) } : {}),
+    } as const;
+    if (role === "lead") {
+      // One lead, always with the id the Lead decides flow uses.
+      if (!lead) lead = { id: "lead", ...member };
+      continue;
+    }
+    const given = typeof r.id === "string" && keep.has(r.id) && r.id !== "lead" && !used.has(r.id) ? r.id : null;
+    if (given) used.add(given);
+    members.push({ id: given ?? unique(slug(name)), ...member });
+  }
+  if (!members.some((m) => m.role === "builder")) return null;
+
+  let planning = o.planning === BUILD_AND_REVIEW_ID ? BUILD_AND_REVIEW_ID : LEAD_DECIDES_ID;
+  const builders = members.filter((m) => m.role === "builder");
+  const reviewers = members.filter((m) => m.role === "reviewer");
+  // Build & Review runs "forge" then "hawk": only for one builder and one reviewer.
+  if (planning === BUILD_AND_REVIEW_ID && (builders.length !== 1 || reviewers.length !== 1)) planning = LEAD_DECIDES_ID;
+  if (planning === BUILD_AND_REVIEW_ID) {
+    for (const m of members) if (m.id === "forge" || m.id === "hawk") m.id = unique(slug(m.name));
+    builders[0]!.id = "forge";
+    reviewers[0]!.id = "hawk";
+  }
+  if (planning === LEAD_DECIDES_ID && !lead) {
+    lead = {
+      id: "lead",
+      name: "Lead",
+      role: "lead",
+      provider: opts.provider,
+      personality: "balanced",
+      instructions: "Pick the smallest team that does the task well.",
+    };
+  }
+  const all = [...(lead ? [lead] : []), ...members].slice(0, MAX_DRAFT_MEMBERS);
+  return {
+    name: text(o.name, 40) || "Team",
+    description: text(o.description, 200),
+    kind,
+    about: text(o.about, 1_000),
+    commands,
+    planning,
+    members: all,
+  };
+}
+
+/** A draft's members as a team saves them. */
+export function draftMembers(draft: TeamDraft): Agent[] {
+  return draft.members.map(({ why: _w, ...m }) => m);
+}

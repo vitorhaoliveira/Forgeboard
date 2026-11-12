@@ -1,4 +1,5 @@
 import { normalizeForm } from "@forgeboard/shared/a2ui";
+import { MAX_DRAFT_MEMBERS } from "@forgeboard/shared";
 import type {
   Agent,
   AgentForm,
@@ -647,4 +648,71 @@ function parsePlanData(data: { summary?: unknown; steps: unknown[] }, existing: 
 export function stripPlan(text: string): string {
   const idx = text.lastIndexOf(PLAN_MARKER);
   return (idx === -1 ? text : text.slice(0, idx)).trim();
+}
+
+// ---------- Designing a team ----------
+
+export const TEAM_MARKER = "FORGEBOARD_TEAM:";
+
+export interface TeamDesignContext {
+  request: string;
+  /** The folder the designer may look at; missing when there is none. */
+  folder?: string;
+  /** Changing an existing team: it as it is now. */
+  current?: { name: string; description: string; kind: string; about: string; commands: string; planning: string; members: { id: string; name: string; role: string; personality: string; instructions: string }[] };
+  /** Asking again: the proposal the user didn't take. */
+  previous?: unknown;
+  providers: string[];
+  locale: Locale;
+}
+
+/** Asks an agent (read only) to design a Forgeboard team, or change one, and answer with one JSON line. */
+export function teamDesignPrompt(ctx: TeamDesignContext): string {
+  const pt = ctx.locale === "pt-BR";
+  const where = ctx.folder
+    ? `The team will work in this folder (your working directory): ${ctx.folder}\nLook around it first, read only: what it holds (languages, package.json and its scripts, docs and their tone, data files), so the team fits the work.`
+    : "There is no folder yet: design from the description alone. Don't look at the working directory.";
+  const job = ctx.current
+    ? `Change this existing team as the user asks, and nothing else:\n${JSON.stringify(ctx.current)}\nKeep the "id" of every member you keep (even if you change its name or instructions). New members have no id. Leave out members you remove.`
+    : "Design a new team for this.";
+  const again = ctx.previous ? `\nThe user didn't take this proposal and asked for another one (their words above say what to change):\n${JSON.stringify(ctx.previous)}\n` : "";
+  return `You design teams of AI agents for Forgeboard, a local app where agents work on a folder: they edit files, and reviewers send work back until it's right. The user always decides at the end.
+
+What the user wants: ${ctx.request}
+
+${where}
+
+${job}
+${again}
+How a Forgeboard team works:
+- Roles: "builder" edits files in the folder. "reviewer" only reads; it approves or sends the work back to a builder with what to fix. "lead" (at most one) reads each task and picks which teammates work on it and in which order.
+- personality: "mentor" (patient, explains), "balanced", or "strict" (blocks on anything wrong). Reviewers that guard quality are usually strict.
+- planning: "lead-decides" (the lead plans each task; good when tasks vary) or "build-and-review" (exactly one builder, then one reviewer, no lead; good for one steady kind of task).
+- kind: "code", "writing", "research", "data" or "other".
+- commands: "standard" (builders may run package managers and tests) or "restricted" (they only edit files). Use "restricted" for anything that isn't code.
+- At most ${MAX_DRAFT_MEMBERS} members, counting the lead. Prefer the smallest team that does the work well: usually one or two builders and one or two reviewers.
+- instructions: one to three concrete sentences about this work (what to write or check, what to keep consistent), never generic advice.
+- provider (optional): who runs the agent, one of ${ctx.providers.map((p) => `"${p}"`).join(", ")}. Leave it out unless the user asked.
+- Agent names: one short word, like "Writer", "Editor", "Analyst", "Guard".
+
+${pt ? "Write the team's name, description, about, every instruction, every why and the summary in Brazilian Portuguese. Agent names can stay in English." : "Write everything in US English."}
+
+End your answer with exactly one line:
+${TEAM_MARKER} {"summary": "1-2 sentences for the user: the team${ctx.current ? ", or what you changed" : ""} and why", "name": "...", "description": "one line", "kind": "...", "about": "what the team works on, 1-2 sentences", "commands": "...", "planning": "...", "members": [{${ctx.current ? '"id": "only for a member you keep", ' : ""}"name": "...", "role": "...", "personality": "...", "instructions": "...", "why": "one line: why this member"}]}`;
+}
+
+
+/** The JSON on the designer's team line, or null without one. */
+export function parseTeamLine(text: string): { summary: string; data: Record<string, unknown> } | null {
+  const idx = text.lastIndexOf(TEAM_MARKER);
+  if (idx === -1) return null;
+  const raw = text.slice(idx + TEAM_MARKER.length).trim();
+  try {
+    const data = JSON.parse(raw.slice(0, raw.lastIndexOf("}") + 1)) as unknown;
+    if (!data || typeof data !== "object") return null;
+    const d = data as Record<string, unknown>;
+    return { summary: typeof d.summary === "string" ? d.summary.trim().slice(0, 400) : "", data: d };
+  } catch {
+    return null;
+  }
 }

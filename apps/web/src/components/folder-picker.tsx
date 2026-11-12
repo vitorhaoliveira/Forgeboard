@@ -12,7 +12,8 @@ import { Button } from "./ui";
  * Browses folders on this machine (through the local server) to pick one, instead of typing its path.
  * Tracked folders (git repositories) are marked; a plain folder can start being tracked here.
  */
-export function FolderPicker({ open, onClose, onPick }: { open: boolean; onClose: () => void; onPick: (path: string) => void }) {
+/** `lookOnly`: any folder can be chosen as it is (nothing gets tracked), for an agent that only reads it. */
+export function FolderPicker({ open, onClose, onPick, lookOnly = false }: { open: boolean; onClose: () => void; onPick: (path: string) => void; lookOnly?: boolean }) {
   const t = useTranslations("folders");
   const tc = useTranslations("common");
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -129,7 +130,7 @@ export function FolderPicker({ open, onClose, onPick }: { open: boolean; onClose
               <span className="truncate">{e.name}</span>
               {e.isRepo && <span className="shrink-0 text-[11px] text-muted">{e.added ? t("added") : t("repo")}</span>}
             </button>
-            {e.isRepo && !e.added && (
+            {(lookOnly || (e.isRepo && !e.added)) && (
               <Button variant="ghost" onClick={() => pick(e.path)} className="mr-1 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100">
                 {t("pick")}
               </Button>
@@ -140,7 +141,9 @@ export function FolderPicker({ open, onClose, onPick }: { open: boolean; onClose
 
       <div className="flex flex-wrap items-center gap-2 border-t border-border px-5 py-3.5">
         <p className="min-w-0 grow text-[12.5px] text-muted">
-          {listing?.isRepo
+          {lookOnly
+            ? t("lookOnly")
+            : listing?.isRepo
             ? listing.added
               ? t("hereAdded")
               : t("hereRepo")
@@ -151,7 +154,12 @@ export function FolderPicker({ open, onClose, onPick }: { open: boolean; onClose
         <Button variant="ghost" onClick={onClose} className="ml-auto">
           {tc("cancel")}
         </Button>
-        {listing && !listing.isRepo && repos === 0 && listing.parent && listing.path !== listing.home ? (
+        {lookOnly ? (
+          <Button variant="primary" onClick={() => listing && pick(listing.path)} disabled={!listing?.parent}>
+            <Check className="size-3.5" aria-hidden="true" />
+            {t("pickThis")}
+          </Button>
+        ) : listing && !listing.isRepo && repos === 0 && listing.parent && listing.path !== listing.home ? (
           <Button variant="primary" onClick={() => track(listing.path)} disabled={tracking}>
             {tracking ? <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> : <FolderGit2 className="size-3.5" aria-hidden="true" />}
             {tracking ? t("tracking") : t("track")}
@@ -168,7 +176,17 @@ export function FolderPicker({ open, onClose, onPick }: { open: boolean; onClose
 }
 
 /** A button that opens the folder picker. */
-export function ChooseFolderButton({ onPick, variant = "secondary", className }: { onPick: (path: string) => void; variant?: "primary" | "secondary"; className?: string }) {
+export function ChooseFolderButton({
+  onPick,
+  variant = "secondary",
+  className,
+  lookOnly,
+}: {
+  onPick: (path: string) => void;
+  variant?: "primary" | "secondary";
+  className?: string;
+  lookOnly?: boolean;
+}) {
   const t = useTranslations("folders");
   const [open, setOpen] = useState(false);
   return (
@@ -177,7 +195,7 @@ export function ChooseFolderButton({ onPick, variant = "secondary", className }:
         <FolderOpen className="size-3.5" aria-hidden="true" />
         {t("choose")}
       </Button>
-      <FolderPicker open={open} onClose={() => setOpen(false)} onPick={onPick} />
+      <FolderPicker open={open} onClose={() => setOpen(false)} onPick={onPick} lookOnly={lookOnly} />
     </>
   );
 }
